@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\CK.EmbeddedResources.Globalization\CK.EmbeddedResources.Globalization.csproj" />
+        <ProjectReference Include="..\CK.ResourceSpace\CK.ResourceSpace.csproj" />
+    </ItemGroup>
+
+</Project>
