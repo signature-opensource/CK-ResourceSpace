@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>13</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CK.BinarySerialization.Sliced" Version="13.0.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CK.EmbeddedResources" Version="2.0.1" />
+    <PackageReference Include="CK.Engine.TypeCollector" Version="33.0.1" />
+  </ItemGroup>
+</Project>

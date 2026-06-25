@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path=".gitignore" />
+    <File Path="Directory.Build.props" />
+    <File Path="nuget.config" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="Tests/CK.ResourceSpace.Tests/CK.ResourceSpace.Tests.csproj" />
+  </Folder>
+  <Project Path="CK.ResourceSpace.Assets/CK.ResourceSpace.Assets.csproj" />
+  <Project Path="CK.ResourceSpace/CK.ResourceSpace.csproj" />
+</Solution>
