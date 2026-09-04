@@ -31,35 +31,7 @@ namespace CK.ResourceSpace.Tests;
 [TestFixture]
 public class AssetCollisionTests
 {
-    const string _p1Content = "PIXELS-FROM-P1";
-    const string _p2Content = "PIXELS-FROM-P2";
-
-    /// <summary>
-    /// Characterization test: this passes, and what it asserts is the defect.
-    /// Delete it once <see cref="Sibling_packages_claiming_the_same_target_path_should_be_refused"/> is enabled.
-    /// </summary>
     [Test]
-    public void Sibling_packages_claiming_the_same_target_path_silently_lose_one_asset()
-    {
-        using var t = new Run( siblings: true );
-
-        // Nothing refused the set...
-        t.Installed.ShouldBeTrue();
-        t.Handler.FinalAssets.ShouldNotBeNull().IsAmbiguous.ShouldBeFalse();
-
-        // ...and a single file reached the installed folder.
-        t.InstalledFiles.Length.ShouldBe( 1 );
-        var installed = t.InstalledFiles[0];
-        Path.GetRelativePath( t.TargetPath, installed ).Replace( '\\', '/' )
-            .ShouldBe( "ts-assets/logos/logo.png" );
-
-        // It is P1's. P2's resource is nowhere: not installed, not recorded as an ambiguity.
-        File.ReadAllText( installed ).ShouldBe( _p1Content );
-        t.Handler.FinalAssets!.Assets["logos/logo.png"].Ambiguities.ShouldBeNull();
-    }
-
-    [Test]
-    [Ignore( "Fixed in CK-EmbeddedResources source, but this project consumes CK.EmbeddedResources.Assets 2.0.1. Enable once that package is repacked and bumped here." )]
     public void Sibling_packages_claiming_the_same_target_path_should_be_refused()
     {
         using( TestHelper.Monitor.CollectTexts( out var logs ) )
