@@ -3,9 +3,9 @@
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="CK.Globalization" Version="6.0.0--ci.2" />
+    <PackageReference Include="CK.Globalization" Version="6.0.0--ci.3" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="CK.EmbeddedResources" Version="3.0.0--ci.1" />
+    <PackageReference Include="CK.EmbeddedResources" Version="3.0.0--ci.2" />
   </ItemGroup>
 </Project>
