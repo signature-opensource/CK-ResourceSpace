@@ -3,9 +3,9 @@
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="CK.Globalization" Version="7.0.1-0.nunit-5.0.ci.1" />
+    <PackageReference Include="CK.Globalization" Version="7.0.1" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="CK.EmbeddedResources" Version="4.0.1-0.nunit-5.0.ci.1" />
+    <PackageReference Include="CK.EmbeddedResources" Version="4.0.1" />
   </ItemGroup>
 </Project>
