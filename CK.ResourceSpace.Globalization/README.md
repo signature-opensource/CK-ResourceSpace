@@ -120,6 +120,6 @@ live updater is a sealed private class: changing its behaviour means wrapping it
 
 ## Requires.
 
-- `CK.ResourceSpace`, for the handler base class, the installers and the data cache.
-- `CK.EmbeddedResources.Globalization`, for `ActiveCultureSet`, `LoadTranslations` and
+- [CK.ResourceSpace](../CK.ResourceSpace/README.md), for the handler base class, the installers and the data cache.
+- [CK.EmbeddedResources.Globalization](../CK.EmbeddedResources.Globalization/README.md), for `ActiveCultureSet`, `LoadTranslations` and
   `FinalTranslationSet`.

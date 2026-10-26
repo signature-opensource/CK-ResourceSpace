@@ -4,6 +4,9 @@ Reads a `locales/` folder out of any `IResourceContainer` and turns it into a tr
 that can be merged with the translations of other containers. Merging is the point: the same key may
 be defined once and overridden elsewhere, and the result has to say when two definitions disagree.
 
+It does not depend on the resource space: it is usable on its own for anything that reads
+translations out of a container.
+
 ## The folder is one required file plus one file per culture.
 
 ```csharp
@@ -52,8 +55,7 @@ embedded resources.
 Note `set.Children` rather than a lookup: `fr` is a child of the root and `fr-FR` is a child of `fr`.
 The tree follows the culture hierarchy, not the folder layout.
 
-Four rules for a regular folder. All four log an error rather than falling back - but see below, an
-error logged is not always `false` returned:
+Four rules for a regular folder. All four log an error rather than falling back:
 
 - `default.jsonc` must exist - *"This file must contain all the resources in english"* - and it is
   the root of the tree, matching `NormalizedCultureInfo.CodeDefault`.
@@ -69,12 +71,6 @@ is skipped, and the active culture names are logged once so the omission is diag
 
 A container with no such folder at all is not an error: `LoadTranslations` returns **true** with a null
 `translations`.
-
-The trap is that a *broken* root returns true as well. When `CreateRoot` fails - a missing
-`default.jsonc`, or one that does not parse - the method logs the error and then falls through to the
-same `translations = null; return true;`. Only a bad **non-root** file returns false. So the return
-value does not separate "no locales" from "unreadable locales", and a consumer that merges on a null
-definition set treats the second as the first. Read the monitor, not the boolean.
 
 ## An override is a prefix on the key.
 
@@ -126,14 +122,8 @@ does: an override clears the ambiguities on the key it replaces.
 
 `FinalTranslationSet.Aggregate` is the third operation, and the merge of two independent branches:
 same key, different text, and the result is ambiguous even when neither input was. It is the **only**
-place that creates an ambiguity - `AddAmbiguity` has exactly one call site, inside it. So the doc
-comment on `Combine` claiming it *"can create ambiguities as well as removing ones"* is half right in
-this code: it removes them, and nothing in it adds one.
-
-The same comment says `Combine` is **not idempotent** - *"When applied twice on a set, false
-ambiguities will be created"*. Nothing enforces that, and nothing in the current body would produce
-those ambiguities either. Treat it as a warning about a call pattern rather than a described
-behaviour.
+place that creates an ambiguity - `AddAmbiguity` has exactly one call site, inside it. `Combine`
+removes ambiguities, it never adds one.
 
 ## Ambiguity is carried in the value, not raised.
 
@@ -147,13 +137,9 @@ public FinalTranslationValue AddAmbiguity( FinalTranslationValue ambiguous )
 value when the incoming one carries the same text or is already listed. Only genuine disagreement
 accumulates.
 
-`IFinalTranslationSet.IsAmbiguous` reports the set's own values; on the root `FinalTranslationSet` it
-also reports any ambiguous sub-set, so a single root test is enough to know whether the whole tree is
-clean - with a caveat. `IsAmbiguous` is a stored flag, propagated by an `|=` that both merge operations
-skip when the sub-set came through unchanged. A sub-set that was already ambiguous on some key and
-whose definitions change nothing does not raise the root flag. A `Throw.DebugAssert` guards the
-invariant, so the hole shows up in a Debug build and passes in Release.
-`FinalTranslationSet.Ambiguities` enumerates the offending entries for a message.
+`IFinalTranslationSet.IsAmbiguous` is a flag computed by the operation that built the set.
+`FinalTranslationSet.Ambiguities` enumerates the offending entries of every set of the tree, for a
+message.
 
 Deciding what to do about an ambiguity is the caller's: nothing here refuses to build an ambiguous
 set. "Nothing throws" would be too strong for the package as a whole, though - the argument guards
@@ -185,5 +171,5 @@ attribute.
 
 ## Requires.
 
-- `CK.Globalization` for `NormalizedCultureInfo` and `ExtendedCultureInfo`.
-- `CK.EmbeddedResources` for `IResourceContainer`, `ResourceLocator` and `ResourceOverrideKind`.
+- [CK.Globalization](https://github.com/signature-opensource/CK-Globalization/blob/stable/CK.Globalization/README.md) for `NormalizedCultureInfo` and `ExtendedCultureInfo`.
+- [CK.EmbeddedResources](https://github.com/signature-opensource/CK-EmbeddedResources/blob/stable/CK.EmbeddedResources/README.md) for `IResourceContainer`, `ResourceLocator` and `ResourceOverrideKind`.

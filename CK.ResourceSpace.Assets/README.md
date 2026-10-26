@@ -23,8 +23,10 @@ registered twice with two different folder names; two *different* handlers claim
 folder is an error, since one root folder has one handler. Registering the identical instance twice is
 not that error - it warns `Duplicate handler registration` and is ignored.
 
-That key is not the resource's own path. It comes from the mapping declared in an `assets.jsonc`
-beside the file:
+That key is computed by `LoadAssets`. `Combine` and `Create` both pass `package.DefaultTargetPath`
+as the default target path, under which a file keeps its path in the folder; an `assets.jsonc` beside
+the files can replace it with a `"targetPath"`, or send a file or folder to an explicit target with
+its `"mappings"`:
 
 ```jsonc
 {
@@ -34,9 +36,10 @@ beside the file:
 }
 ```
 
-And it is not prefixed per package either, even though `Combine` and `Create` both pass
-`package.DefaultTargetPath` to `LoadAssets`. Two packages in different namespaces shipping that exact
-`assets.jsonc` collide - which is what the fixtures below rely on.
+A mapped target is a path in the final folder, not prefixed per package: two packages in different
+namespaces shipping that exact `assets.jsonc` collide - which is what the fixtures below rely on.
+The full format of `assets.jsonc` is described in
+[CK.EmbeddedResources.Assets](https://github.com/signature-opensource/CK-EmbeddedResources/blob/stable/CK.EmbeddedResources.Assets/README.md).
 
 ## The merge is a cache, and it is where collisions are decided.
 
@@ -96,17 +99,14 @@ The Live state stores the installer's `TargetPath` and the root folder name, and
 handler installed through anything else has no way to be serialized, so it opts out, and nothing
 warns about it: the space just reports that no enabled Live handler exists.
 
-Read the test literally, though: it is `is not FileSystemInstaller`, so a *subclass* keeps Live
-enabled - and then loses itself, because only the target path crosses over and the live side
-reconstructs the base class. `InitialFileSystemInstaller`, whose whole purpose is deleting files it
-did not write, becomes a plain writer on the Live side.
+Any `FileSystemInstaller`, an `InitialFileSystemInstaller` included, keeps Live enabled; the Live side
+always writes through a plain `FileSystemInstaller` rebuilt on that target path.
 
 On the Live side the updater invalidates the cache for the changed resources, then recomputes the
-whole final set and rewrites it. There is no per-file update path and none is claimed - the handler's
-own summary says *"Live support currently uses no cache"*.
+whole final set and rewrites it. There is no per-file update path.
 
 ## Requires.
 
-- `CK.ResourceSpace`, for the handler base class, the installers and the data cache.
-- `CK.EmbeddedResources.Assets`, for `LoadAssets`, `ResourceAssetDefinitionSet` and
+- [CK.ResourceSpace](../CK.ResourceSpace/README.md), for the handler base class, the installers and the data cache.
+- [CK.EmbeddedResources.Assets](https://github.com/signature-opensource/CK-EmbeddedResources/blob/stable/CK.EmbeddedResources.Assets/README.md), for `LoadAssets`, `ResourceAssetDefinitionSet` and
   `FinalResourceAssetSet`.

@@ -39,8 +39,9 @@ body has no failure path - it always returns a collector wrapping the *same* `Co
 instance. Registrations are closed later, by `ResSpaceDataBuilder.Build`. So the null check on that
 first call is defensive, not a real branch.
 
-The generated code container is the reason for the last two being separate. It can be assigned at any
-of the five stages, `ResSpaceBuilder.GeneratedCodeContainer` being the last chance, so that a code
+The generated code container is the reason for the last two being separate. It can be assigned, once,
+on any of these four objects and on the `ResSpaceData` between the last two,
+`ResSpaceBuilder.GeneratedCodeContainer` being the last chance, so that a code
 generator can produce its code *from* the topologically ordered packages it has just been given.
 
 ## Every space has a head and a tail you never register.
@@ -77,9 +78,8 @@ That is `ResCoreData.AllPackageResources` verbatim, from
 [`TopologicalSorterTests.with_children`](../Tests/CK.ResourceSpace.Tests/TopologicalSorterTests.cs).
 A package that contains others can therefore state something before them and override them after -
 which is what `Reachables` (head point of view, children excluded) and `AfterReachables` (tail point
-of view) express. Note that `AfterReachables` unions each child's *`AfterReachables`*, not its
-`Reachables`, so a grandchild's own children are in there too - the doc comment saying "the `Children`
-and their `Reachables`" understates it.
+of view) express. `AfterReachables` extends `Reachables` with the `Children` and each child's own
+`AfterReachables`, so a grandchild's own children are in there too.
 
 `Requires` and `Children` are exclusive: a child is not a requirement and a requirement is not a
 child. `RequiredBy` declares the reverse edge, and a package requiring or being required by itself is
@@ -142,7 +142,7 @@ already there and deletes, on success only, whatever it did not write. That defe
 the target folder is updated in place rather than destroyed and recreated, which would wake every file
 watcher pointed at it.
 
-## Cached per-package data is three methods, and only one of them may fail.
+## Cached per-package data is three methods, and only one of them cannot fail.
 
 [`ResPackageDataCache<T>`](ResPackageDataCache.cs) is a template method that associates an immutable
 `T` to each package, computed once and reused:
@@ -162,18 +162,21 @@ that is somehow invalid has to surface inside `T`, not as a null. A `T` that has
 `InvalidateCache` walks from a local resource set up to `<App>`, which is what makes the Live side
 cheap: a changed file invalidates one path through the graph, not the graph.
 
+For two concrete folder handlers built on this cache, see
+[CK.ResourceSpace.Assets](../CK.ResourceSpace.Assets/README.md) and
+[CK.ResourceSpace.Globalization](../CK.ResourceSpace.Globalization/README.md). They share the same
+shape: same constructor pattern, same `ResPackageDataCache<T>` with three methods, same "an ambiguity
+fails the initialization and aborts the whole build" rule, same Live support enabled only when
+installing through a `FileSystemInstaller`. What differs is `T` - a set of files versus a tree of
+translations.
+
 ## The Live state is written at install time, and disabled by a string.
 
 `ResSpace.Install` writes `LiveState.dat` into `ResCoreData.LiveStatePath` - defaulting to
 `AppResourcesLocalPath/.ck-watch/`, created with a `.gitignore` containing `*`.
 
-`ResSpaceCollector.NoLiveState` (the literal `"none"`) is documented as suppressing it *"even if
-`AppResourcesLocalPath` is specified"*. **The code does not honour that combination.** The per-package
-watch root is gated on the marker, but the `<App>` fallback `watchRoot ??= appLocalPath` is not, so
-with both set `WatchRoot` is non-null, `Install` takes the writing branch, and `LiveStatePath` - still
-the bare string `"none"` - is used as a path prefix: a folder named `none` is created and the state
-lands in `noneLiveState.dat`. Set `LiveStatePath` to `"none"` and leave `AppResourcesLocalPath` unset,
-or expect that folder.
+`ResSpaceCollector.NoLiveState` (the literal `"none"`) is the `LiveStatePath` marker for "no Live
+state", and the value it takes when neither `LiveStatePath` nor `AppResourcesLocalPath` is set.
 
 Two more conditions turn it off in practice, and both only log: no local package and no
 `AppResourcesLocalPath` (`WatchRoot` is null, so there is nothing to watch), or no registered handler
@@ -187,8 +190,8 @@ so a specialized handler that forgets to implement it compiles and then has no L
 
 ## Requires.
 
-- `CK.EmbeddedResources` for `IResourceContainer` and the `[EmbeddedResourceType]` /
+- [CK.EmbeddedResources](https://github.com/signature-opensource/CK-EmbeddedResources/blob/stable/CK.EmbeddedResources/README.md) for `IResourceContainer` and the `[EmbeddedResourceType]` /
   `IResourcePackage` / `[Requires<>]` / `[Package<>]` / `[Children<>]` declarations that
   `RegisterPackage( monitor, type )` reads.
 - `CK.Engine.TypeCollector` for `GlobalTypeCache` and `ICachedType`.
-- `CK.BinarySerialization.Sliced` for the Live state and the serialization of `ResCoreData`.
+- [CK.BinarySerialization.Sliced](https://github.com/signature-opensource/CK-BinarySerialization/blob/stable/CK.BinarySerialization.Sliced/README.md) for the Live state and the serialization of `ResCoreData`.
