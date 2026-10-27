@@ -21,7 +21,7 @@ public static class ResourceContainerGlobalizationExtension
     /// <code>
     /// kind-locales/
     ///   default.jsonc
-    ///   fr-FR.json
+    ///   fr-FR.jsonc
     ///   en/
     ///     en-GB.jsonc
     ///   en-US.jsonc
@@ -63,12 +63,15 @@ public static class ResourceContainerGlobalizationExtension
             using( monitor.OpenInfo( $"Reading {content}." ) )
             {
                 var defaultSet = CreateRoot( monitor, activeCultures, content, isOverrideFolder );
-                if( defaultSet != null )
+                if( defaultSet == null )
                 {
-                    monitor.Trace( $"Successfully loaded {defaultSet.Translations.Count} translations from {defaultSet.Origin}." );
-                    translations = ReadTranslations( monitor, defaultSet, isOverrideFolder, content.AllResources, activeCultures, ref unactiveCultureWarned );
-                    return translations != null;
+                    // The folder exists but its root set cannot be created (error has been logged).
+                    translations = null;
+                    return false;
                 }
+                monitor.Trace( $"Successfully loaded {defaultSet.Translations.Count} translations from {defaultSet.Origin}." );
+                translations = ReadTranslations( monitor, defaultSet, isOverrideFolder, content.AllResources, activeCultures, ref unactiveCultureWarned );
+                return translations != null;
             }
         }
         translations = null;
