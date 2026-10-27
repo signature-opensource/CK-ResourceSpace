@@ -211,7 +211,7 @@ public sealed class ResSpaceDataBuilder
         // This is the common requirements of all ResPackage that have no requirement.
         ImmutableArray<ResPackage> requiresCode = [codePackage];
         // The Watch root is the longest common parent of all the ResPackage.LocalPath.
-        // We compute it if and only if the LiveStatePath is not ResourceSpaceCollector.NoLiveState.
+        // We compute it if and only if the LiveStatePath is not ResSpaceCollector.NoLiveState.
         string? watchRoot = null;
 
         var bAppRequirements = ImmutableArray.CreateBuilder<ResPackage>();

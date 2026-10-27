@@ -55,7 +55,7 @@ public sealed partial class ResSpace
     /// </summary>
     public ImmutableArray<ResourceSpaceFileHandler> FileHandlers => _fileHandlers;
 
-    // Called by the ResourceSpaceBuilder.Build().
+    // Called by the ResSpaceBuilder.Build().
     internal bool Initialize( IActivityMonitor monitor )
     {
         bool success = true;

@@ -196,15 +196,16 @@ public sealed partial class ResPackage
     /// </para>
     /// <para>
     /// The <see cref="AfterReachables"/> is the same set but from
-    /// the point of view of the "tail" of the package that includes the <see cref="Reachables"/>
-    /// of the <see cref="Children"/>.
+    /// the point of view of the "tail" of the package that also includes the <see cref="Children"/>
+    /// and their <see cref="AfterReachables"/>.
     /// </para>
     /// </summary>
     public IReadOnlySet<ResPackage> Reachables => _reachables;
 
     /// <summary>
     /// Gets the packages that are reachable from the "tail" of this package:
-    /// this extends <see cref="Reachables"/> with the <see cref="Children"/> and their <see cref="Reachables"/>.
+    /// this extends <see cref="Reachables"/> with the <see cref="Children"/> and their <see cref="AfterReachables"/>
+    /// (the children's own children are recursively included).
     /// </summary>
     public IReadOnlySet<ResPackage> AfterReachables => _afterReachables;
 

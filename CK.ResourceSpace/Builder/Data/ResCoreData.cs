@@ -29,8 +29,8 @@ public sealed partial class ResCoreData
     // an empty container may be a non yet assigned container or a definitly assigned empty one.
     internal IResourceContainer? _generatedCodeContainer;
 
-    // _packages, _localPackages, _allPackageResources, _localPackageResources, _exposedPackages, _reachablePackageSetCache,
-    // _codePackage, _appPackage and _watchRoot are set by the ResourceSpaceDataBuilder.Build method.
+    // _packages, _localPackages, _allPackageResources, _localPackageResources, _resPackageDataCache,
+    // _codePackage, _appPackage and _watchRoot are set by the ResSpaceDataBuilder.Build method.
     internal ImmutableArray<ResPackage> _packages;
     internal ImmutableArray<ResPackage> _localPackages;
     internal ImmutableArray<IResPackageResources> _allPackageResources;

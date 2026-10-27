@@ -9,7 +9,8 @@ namespace CK.Core;
 /// Assets folder handler.
 /// See <see cref="ResourceContainerAssetsExtension.LoadAssets(IResourceContainer, IActivityMonitor, NormalizedPath, out ResourceAssetDefinitionSet?, string)"/>.
 /// <para>
-/// Live support currently uses no cache.
+/// Live support uses the same cache: a change invalidates the cached data of the changed local resources
+/// (up to the "&lt;App&gt;" package) and the final assets are recomputed through the cache.
 /// </para>
 /// </summary>
 public partial class AssetsResourceHandler : ResourceSpaceFolderHandler
