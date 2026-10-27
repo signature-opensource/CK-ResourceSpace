@@ -329,8 +329,11 @@ public sealed class ResSpaceDataBuilder
         if( appLocalPath != null )
         {
             // If we have no local packages, watchRoot is null: we'll only
-            // watch the "<App> folder.
-            watchRoot ??= appLocalPath;
+            // watch the "<App> folder (unless the Live state is disabled).
+            if( _collector.LiveStatePath != ResSpaceCollector.NoLiveState )
+            {
+                watchRoot ??= appLocalPath;
+            }
             resourceIndex.Add( appPackage.Resources.Resources, appPackage.Resources );
             bLocal.Add( appPackage );
             ++localPackageResourceCount;
