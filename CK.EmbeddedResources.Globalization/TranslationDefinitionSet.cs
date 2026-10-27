@@ -119,11 +119,7 @@ public sealed partial class TranslationDefinitionSet : ITranslationDefinitionSet
 
     /// <summary>
     /// Apply this set of definitions to a base <see cref="FinalTranslationSet"/> to produce a new
-    /// final set. This can create ambiguities as well as removing ones.
-    /// <para>
-    /// This operation is not idempotent. When applied twice on a set, false ambiguities
-    /// will be created.
-    /// </para>
+    /// final set. This never creates ambiguities: an override removes the ambiguities of the key it replaces.
     /// </summary>
     /// <param name="monitor">The monitor to use.</param>
     /// <param name="baseFinalSet">The base set to consider.</param>
@@ -131,35 +127,26 @@ public sealed partial class TranslationDefinitionSet : ITranslationDefinitionSet
     public FinalTranslationSet? Combine( IActivityMonitor monitor, FinalTranslationSet baseFinalSet )
     {
         Throw.CheckArgument( baseFinalSet.Culture == Culture );
-        var (rootTranslations, isAmbiguous) = CombineTranslations( monitor, this, baseFinalSet, isRoot: true );
+        var rootTranslations = CombineTranslations( monitor, this, baseFinalSet );
         bool success = rootTranslations != null;
 
         IFinalTranslationSet[]? cloned = null;
         for( int i = 1; i < baseFinalSet._subSets.Length; ++i )
         {
-            var baseSet = baseFinalSet._subSets[i];
             var def = _subDefs[i];
-            if( def == null )
-            {
-                if( baseSet != null )
-                {
-                    isAmbiguous |= baseSet.IsAmbiguous;
-                }
-            }
-            else
+            if( def != null )
             {
                 // If the baseFinalSet has no definition for this specific culture, we must use
                 // the closest culture that has a set defined.
-                baseSet ??= baseFinalSet.FindTranslationSetOrParent( def.Culture );
+                var baseSet = baseFinalSet._subSets[i] ?? baseFinalSet.FindTranslationSetOrParent( def.Culture );
                 // We can now combine our definitions with the base set.
-                var (t, a) = CombineTranslations( monitor, def, baseSet, isRoot: false );
+                var t = CombineTranslations( monitor, def, baseSet );
                 success &= t != null;
-                if( success && (t != baseSet.Translations || a != baseSet.IsAmbiguous) )
+                if( success && t != baseSet.Translations )
                 {
                     Throw.DebugAssert( t != null );
                     cloned ??= baseFinalSet.CloneSubSets();
-                    cloned[i] = new FinalTranslationSet.SubSet( def.Culture, t, a );
-                    isAmbiguous |= a;
+                    cloned[i] = new FinalTranslationSet.SubSet( def.Culture, t );
                 }
             }
         }
@@ -169,19 +156,16 @@ public sealed partial class TranslationDefinitionSet : ITranslationDefinitionSet
             {
                 return baseFinalSet;
             }
-            return new FinalTranslationSet( _activeCultures, rootTranslations, cloned ?? baseFinalSet.CloneSubSets(), isAmbiguous );
+            return new FinalTranslationSet( _activeCultures, rootTranslations, cloned ?? baseFinalSet.CloneSubSets() );
         }
         return null;
     }
 
-    static (IReadOnlyDictionary<string, FinalTranslationValue>?,bool) CombineTranslations( IActivityMonitor monitor,
-                                                                                           ITranslationDefinitionSet definition,
-                                                                                           IFinalTranslationSet baseSet,
-                                                                                           bool isRoot )
+    static IReadOnlyDictionary<string, FinalTranslationValue>? CombineTranslations( IActivityMonitor monitor,
+                                                                                   ITranslationDefinitionSet definition,
+                                                                                   IFinalTranslationSet baseSet )
     {
         bool success = true;
-        bool isAmbiguous = !isRoot && baseSet.IsAmbiguous;
-        bool mustRecomputeAmbiguities = isRoot;
         var result = baseSet.Translations;
         if( definition.Translations.Count > 0 )
         {
@@ -189,7 +173,6 @@ public sealed partial class TranslationDefinitionSet : ITranslationDefinitionSet
             var newOne = new Dictionary<string, FinalTranslationValue>( baseSet.Translations );
             foreach( var (key, def) in definition.Translations )
             {
-                bool fromInheritance = false;
                 if( !newOne.TryGetValue( key, out var exists ) )
                 {
                     var p = baseSet.ClosestParent;
@@ -197,7 +180,6 @@ public sealed partial class TranslationDefinitionSet : ITranslationDefinitionSet
                     {
                         p = p.ClosestParent;
                     }
-                    fromInheritance = true;
                 }
                 if( exists.IsValid )
                 {
@@ -229,7 +211,6 @@ public sealed partial class TranslationDefinitionSet : ITranslationDefinitionSet
                         {
                             // Override (clears any ambiguity).
                             newOne[key] = new FinalTranslationValue( def.Text, definition.Origin );
-                            mustRecomputeAmbiguities = hasAmbiguities && !fromInheritance;
                             changed = true;
                         }
                     }
@@ -252,15 +233,7 @@ public sealed partial class TranslationDefinitionSet : ITranslationDefinitionSet
             }
             if( changed ) result = newOne;
         }
-        if( success )
-        {
-            if( mustRecomputeAmbiguities )
-            {
-                isAmbiguous = result.Values.Any( v => v.Ambiguities != null );
-            }
-            return (result,isAmbiguous);
-        }
-        return default;
+        return success ? result : null;
     }
 
 

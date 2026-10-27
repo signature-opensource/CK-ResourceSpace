@@ -19,12 +19,15 @@ public sealed partial class FinalTranslationSet : IFinalTranslationSet
     readonly IReadOnlyDictionary<string, FinalTranslationValue> _translations;
     readonly ActiveCultureSet _activeCultures;
     internal readonly IFinalTranslationSet?[] _subSets;
-    readonly bool _isAmbiguous;
+    // Computed when needed: maintaining it across Aggregate and Combine is useless (it is
+    // read only on the final set) and error prone.
+    bool? _isAmbiguous;
 
+    /// <param name="isAmbiguous">The known ambiguity (null to compute it when needed).</param>
     internal FinalTranslationSet( ActiveCultureSet activeCultures,
                                   IReadOnlyDictionary<string, FinalTranslationValue>? translations,
                                   IFinalTranslationSet?[] subSets,
-                                  bool isAmbiguous )
+                                  bool? isAmbiguous = null )
     {
         _activeCultures = activeCultures;
         _translations = translations ?? ImmutableDictionary<string, FinalTranslationValue>.Empty;
@@ -54,6 +57,7 @@ public sealed partial class FinalTranslationSet : IFinalTranslationSet
         _translations = ImmutableDictionary<string, FinalTranslationValue>.Empty;
         _subSets = new IFinalTranslationSet[activeCultures.Count];
         _subSets[0] = this;
+        _isAmbiguous = false;
     }
 
     /// <inheritdoc />
@@ -69,7 +73,16 @@ public sealed partial class FinalTranslationSet : IFinalTranslationSet
     public IEnumerable<IFinalTranslationSet> Children => _activeCultures.Root.Children.Select( c => _subSets[c.Index] ).Where( s => s != null )!;
 
     /// <inheritdoc />
-    public bool IsAmbiguous => _isAmbiguous;
+    public bool IsAmbiguous => _isAmbiguous ??= HasAmbiguity( _translations ) || _subSets.Skip( 1 ).Any( s => s != null && s.IsAmbiguous );
+
+    internal static bool HasAmbiguity( IReadOnlyDictionary<string, FinalTranslationValue> translations )
+    {
+        foreach( var v in translations.Values )
+        {
+            if( v.Ambiguities != null ) return true;
+        }
+        return false;
+    }
 
     /// <inheritdoc />
     public IEnumerable<KeyValuePair<string, FinalTranslationValue>> RootPropagatedTranslations => _translations;
@@ -160,7 +173,7 @@ public sealed partial class FinalTranslationSet : IFinalTranslationSet
     public FinalTranslationSet Aggregate( FinalTranslationSet other )
     {
         Throw.CheckArgument( Culture == other.Culture );
-        var translations = AggregateTranslations( this, other, out bool isAmbiguous );
+        var translations = AggregateTranslations( this, other );
 
         bool clonedChanged = false;
         var cloned = CloneSubSets();
@@ -174,19 +187,17 @@ public sealed partial class FinalTranslationSet : IFinalTranslationSet
                 {
                     cloned[i] = new SubSet( their );
                     clonedChanged = true;
-                    isAmbiguous |= their.IsAmbiguous;
                 }
             }
             else
             {
                 if( their != null )
                 {
-                    var agg = AggregateTranslations( mine, their, out var aggAmbiguous );
+                    var agg = AggregateTranslations( mine, their );
                     if( agg != mine.Translations )
                     {
                         clonedChanged = true;
-                        cloned[i] = new SubSet( mine.Culture, agg, aggAmbiguous );
-                        isAmbiguous |= aggAmbiguous;
+                        cloned[i] = new SubSet( mine.Culture, agg );
                     }
                 }
             }
@@ -194,15 +205,13 @@ public sealed partial class FinalTranslationSet : IFinalTranslationSet
 
         if( translations == _translations && !clonedChanged )
         {
-            Throw.DebugAssert( isAmbiguous == _isAmbiguous );
             return this;
         }
-        return new FinalTranslationSet( _activeCultures, translations, cloned, isAmbiguous );
+        return new FinalTranslationSet( _activeCultures, translations, cloned );
     }
 
     static IReadOnlyDictionary<string, FinalTranslationValue> AggregateTranslations( IFinalTranslationSet set1,
-                                                                                     IFinalTranslationSet set2,
-                                                                                     out bool isAmbiguous )
+                                                                                     IFinalTranslationSet set2 )
     {
         IReadOnlyDictionary<string, FinalTranslationValue> result;
         if( set1.Translations.Count > 0 )
@@ -214,7 +223,6 @@ public sealed partial class FinalTranslationSet : IFinalTranslationSet
                 if( set1.Translations.Count > set2.Translations.Count ) (s1, s2) = (s2, s1);
                 var candidate = new Dictionary<string, FinalTranslationValue>( s2.Translations );
                 bool changed = false;
-                isAmbiguous = s2.IsAmbiguous;
                 foreach( var (key, t1) in s1.Translations )
                 {
                     if( candidate.TryGetValue( key, out var t2 ) )
@@ -222,7 +230,6 @@ public sealed partial class FinalTranslationSet : IFinalTranslationSet
                         var f = t1.AddAmbiguity( t2 );
                         if( f.Ambiguities != t1.Ambiguities )
                         {
-                            isAmbiguous |= f.Ambiguities != null;
                             candidate[key] = f;
                             changed = true;
                         }
@@ -238,13 +245,11 @@ public sealed partial class FinalTranslationSet : IFinalTranslationSet
             else
             {
                 result = set1.Translations;
-                isAmbiguous = set1.IsAmbiguous;
             }
         }
         else
         {
             result = set2.Translations;
-            isAmbiguous = set2.IsAmbiguous;
         }
         return result;
     }

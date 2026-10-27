@@ -137,7 +137,8 @@ public FinalTranslationValue AddAmbiguity( FinalTranslationValue ambiguous )
 value when the incoming one carries the same text or is already listed. Only genuine disagreement
 accumulates.
 
-`IFinalTranslationSet.IsAmbiguous` is a flag computed by the operation that built the set.
+`IFinalTranslationSet.IsAmbiguous` is computed from the translations the first time it is read, then
+cached: true when a value has `Ambiguities` (for the root, in any set of the tree).
 `FinalTranslationSet.Ambiguities` enumerates the offending entries of every set of the tree, for a
 message.
 

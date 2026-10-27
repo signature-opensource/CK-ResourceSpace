@@ -35,7 +35,7 @@ public sealed partial class FinalTranslationSet // Serialization
                 sub[i] = (s.Translations, s.IsAmbiguous);
             }
         }
-        return new SerializedData( _activeCultures, _translations, sub, _isAmbiguous );
+        return new SerializedData( _activeCultures, _translations, sub, IsAmbiguous );
     }
 
     /// <summary>

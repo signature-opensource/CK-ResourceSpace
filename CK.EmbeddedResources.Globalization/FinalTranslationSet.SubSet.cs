@@ -11,16 +11,17 @@ public sealed partial class FinalTranslationSet // SubSets
         internal FinalTranslationSet? _root;
         readonly IReadOnlyDictionary<string, FinalTranslationValue> _translations;
         readonly ActiveCulture _culture;
-        readonly bool _isAmbiguous;
+        bool? _isAmbiguous;
 
         public SubSet( IFinalTranslationSet o )
-            : this( o.Culture, o.Translations, o.IsAmbiguous )
+            : this( o.Culture, o.Translations, ((SubSet)o)._isAmbiguous )
         {
         }
 
+        /// <param name="isAmbiguous">The known ambiguity (null to compute it when needed).</param>
         public SubSet( ActiveCulture culture,
                        IReadOnlyDictionary<string, FinalTranslationValue> translations,
-                       bool isAmbiguous )
+                       bool? isAmbiguous = null )
         {
             Throw.DebugAssert( culture.Index > 0 );
             _translations = translations;
@@ -32,7 +33,7 @@ public sealed partial class FinalTranslationSet // SubSets
 
         public IReadOnlyDictionary<string, FinalTranslationValue> Translations => _translations;
 
-        public bool IsAmbiguous => _isAmbiguous;
+        public bool IsAmbiguous => _isAmbiguous ??= HasAmbiguity( _translations );
 
         public ActiveCulture Culture => _culture;
 
