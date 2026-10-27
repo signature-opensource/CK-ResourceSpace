@@ -28,6 +28,14 @@ sealed partial class CoreCollector : IResPackageDescriptorRegistrar
 
     int _localPackageCount;
     int _typedPackageCount;
+    // Set when a RegisterPackage fails: the registrations are incomplete.
+    bool _hasRegistrationError;
+
+    /// <summary>
+    /// Gets whether at least one <see cref="RegisterPackage(IActivityMonitor, ICachedType, NormalizedPath, bool?, bool)"/>
+    /// failed (the error has been logged).
+    /// </summary>
+    public bool HasRegistrationError => _hasRegistrationError;
 
     public CoreCollector( GlobalTypeCache typeCache, Func<ICachedType, bool>? allowedTypes )
     {
@@ -54,7 +62,7 @@ sealed partial class CoreCollector : IResPackageDescriptorRegistrar
         Throw.CheckArgument( resourceStore is not null && resourceStore.IsValid );
         Throw.CheckArgument( resourceAfterStore is not null && resourceStore.IsValid );
         Throw.CheckArgument( resourceStore != resourceAfterStore );
-        return DoRegister( monitor, fullName, null, defaultTargetPath, resourceStore, resourceAfterStore, isOptional );
+        return OnRegistered( DoRegister( monitor, fullName, null, defaultTargetPath, resourceStore, resourceAfterStore, isOptional ) );
     }
 
     public ResPackageDescriptor? RegisterPackage( IActivityMonitor monitor,
@@ -66,6 +74,21 @@ sealed partial class CoreCollector : IResPackageDescriptorRegistrar
         Throw.CheckNotNullArgument( type );
         Throw.CheckArgument( type.EngineUnhandledType == EngineUnhandledType.None );
         Throw.CheckArgument( "Type cache mismatch.", type.TypeCache == TypeCache );
+        return OnRegistered( DoRegister( monitor, type, defaultTargetPath, isOptional, ignoreLocal ) );
+    }
+
+    ResPackageDescriptor? OnRegistered( ResPackageDescriptor? p )
+    {
+        if( p == null ) _hasRegistrationError = true;
+        return p;
+    }
+
+    ResPackageDescriptor? DoRegister( IActivityMonitor monitor,
+                                      ICachedType type,
+                                      NormalizedPath defaultTargetPath,
+                                      bool? isOptional,
+                                      bool ignoreLocal )
+    {
         if( _packageIndex.TryGetValue( type, out var already ) )
         {
             monitor.Error( $"Duplicate package registration: Type '{type.CSharpName}' is already registered as '{already}'." );
@@ -221,14 +244,21 @@ sealed partial class CoreCollector : IResPackageDescriptorRegistrar
                        out HashSet<ResourceLocator> codeHandledResources,
                        out IReadOnlyList<ResPackageDescriptor> finalOptionalPackages )
     {
-        bool success = true;
-        // First, we must handle the AlsoRegisterTypes of non optional packages
-        // that are not already regsitered.
-        // We do this here (in the Close) to let regular registrations "win" over registrations from
-        // the AlsoRegisterTypes.
-        foreach( ResPackageDescriptor p in _packages )
+        bool success = !_hasRegistrationError;
+        if( !success )
         {
-            success &= EnsureAlsoRegistrations( monitor, p );
+            monitor.Error( "At least one package registration failed." );
+        }
+        else
+        {
+            // First, we must handle the AlsoRegisterTypes of non optional packages
+            // that are not already regsitered.
+            // We do this here (in the Close) to let regular registrations "win" over registrations from
+            // the AlsoRegisterTypes.
+            foreach( ResPackageDescriptor p in _packages )
+            {
+                success &= EnsureAlsoRegistrations( monitor, p );
+            }
         }
         if( success )
         {

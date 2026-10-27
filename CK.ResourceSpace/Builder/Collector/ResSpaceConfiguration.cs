@@ -200,9 +200,14 @@ public sealed class ResSpaceConfiguration : IResPackageDescriptorRegistrar
     /// eventually be handles by a <see cref="ResSpaceDataBuilder"/>.
     /// </summary>
     /// <param name="monitor">The monitor to use.</param>
-    /// <returns>The collector with initialized packages or null on error.</returns>
+    /// <returns>The collector with initialized packages or null if a package registration failed.</returns>
     public ResSpaceCollector? Build( IActivityMonitor monitor )
     {
+        if( _coreCollector.HasRegistrationError )
+        {
+            monitor.Error( "At least one package registration failed." );
+            return null;
+        }
         var liveStatePath = _liveStatePath
                                         ?? (_appResourcesLocalPath == null
                                                 ? ResSpaceCollector.NoLiveState
