@@ -3,9 +3,9 @@
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="CK.Globalization" Version="7.0.2-0.cris-auth.0.ci.2" />
+    <PackageReference Include="CK.Globalization" Version="8.0.0-0.cris-auth.0.ci.7" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="CK.EmbeddedResources" Version="4.0.2-0.cris-auth.0.ci.2" />
+    <PackageReference Include="CK.EmbeddedResources" Version="5.0.0-0.cris-auth.0.ci.7" />
   </ItemGroup>
 </Project>

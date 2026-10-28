@@ -4,7 +4,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="CK.EmbeddedResources.Assets" Version="4.0.2-0.cris-auth.0.ci.2" />
+    <PackageReference Include="CK.EmbeddedResources.Assets" Version="5.0.0-0.cris-auth.0.ci.7" />
     <ProjectReference Include="..\CK.ResourceSpace\CK.ResourceSpace.csproj" />
   </ItemGroup>
 </Project>
