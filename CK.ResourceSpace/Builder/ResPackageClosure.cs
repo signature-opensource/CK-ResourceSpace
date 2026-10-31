@@ -1,6 +1,7 @@
 using CK.Engine.TypeCollector;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace CK.Core;
 
@@ -8,10 +9,11 @@ using Ref = ResPackageDescriptor.Ref;
 
 /// <summary>
 /// Computes the packages that a <see cref="ResSpace"/> keeps from a set of candidate typed packages, before any
-/// <see cref="ResPackageDescriptor"/> is created: only the types' attributes are read.
+/// <see cref="ResPackageDescriptor"/> is created: only the types (their attributes and their mappings, see
+/// <see cref="ICachedType.TryGetMapping(IActivityMonitor, out CachedTypeMapping?)"/>) are read.
 /// <para>
 /// When the candidates are registered with the roots as required and the other ones as optional, the ResSpace keeps
-/// exactly this closure (provided that the single mappings are the same and that no relation is added to the descriptors):
+/// exactly this closure (provided that no relation and no name mapping is added to the descriptors by code):
 /// <list type="bullet">
 ///     <item>The roots are kept.</item>
 ///     <item>
@@ -20,7 +22,12 @@ using Ref = ResPackageDescriptor.Ref;
 ///     that declares a RequiredBy or a Groups to a kept package is not kept because of it.
 ///     </item>
 ///     <item>The optional references ([Optional...] variants) never keep a package.</item>
-///     <item>A required reference to a package that is not a candidate is an error.</item>
+///     <item>A reference to a multiple abstraction never keeps a package.</item>
+///     <item>
+///     A required reference to a single abstraction keeps its implementation: the only root candidate that implements it,
+///     otherwise the only candidate that implements it.
+///     </item>
+///     <item>A required reference that cannot be resolved among the candidates is an error.</item>
 /// </list>
 /// </para>
 /// </summary>
@@ -33,16 +40,11 @@ public static class ResPackageClosure
     /// <param name="typeCache">The type cache.</param>
     /// <param name="candidates">The candidate typed packages.</param>
     /// <param name="isRoot">Whether a candidate is a root (registered as required).</param>
-    /// <param name="singleMappings">
-    /// Optional aliases (a <see cref="string"/> or a <see cref="ICachedType"/>) of candidate packages, like the
-    /// ones added by <see cref="ResPackageDescriptor.AddSingleMapping(IActivityMonitor, ICachedType)"/>.
-    /// </param>
     /// <returns>The kept packages or null on error.</returns>
     public static HashSet<ICachedType>? Compute( IActivityMonitor monitor,
                                                  GlobalTypeCache typeCache,
                                                  IEnumerable<ICachedType> candidates,
-                                                 Func<ICachedType, bool> isRoot,
-                                                 IReadOnlyDictionary<object, ICachedType>? singleMappings = null )
+                                                 Func<ICachedType, bool> isRoot )
     {
         Throw.CheckNotNullArgument( monitor );
         Throw.CheckNotNullArgument( typeCache );
@@ -50,9 +52,20 @@ public static class ResPackageClosure
         Throw.CheckNotNullArgument( isRoot );
 
         var state = new State( monitor, typeCache );
+        var resourceGroup = typeof( IResourceGroup );
         foreach( var c in candidates )
         {
-            if( !state.Index.TryAdd( c, c ) )
+            if( !c.TryGetMapping( monitor, out var mapping ) )
+            {
+                state.Success = false;
+                continue;
+            }
+            if( mapping.IsKey )
+            {
+                monitor.Error( $"Type '{c.CSharpName}' is an abstraction (it has a {mapping.Cardinality} mapping): it cannot be a package." );
+                state.Success = false;
+            }
+            else if( !state.Index.TryAdd( c, c ) )
             {
                 monitor.Error( $"Duplicate candidate package '{c.CSharpName}'." );
                 state.Success = false;
@@ -62,16 +75,24 @@ public static class ResPackageClosure
                 monitor.Error( $"Candidate package '{c.CSharpName}' has the same full name as '{state.Index[c.Type.FullName!].CSharpName}'." );
                 state.Success = false;
             }
-            else if( isRoot( c ) && state.Result.Add( c ) )
+            else
             {
-                state.Queue.Enqueue( c );
-            }
-        }
-        if( singleMappings != null )
-        {
-            foreach( var (alias, target) in singleMappings )
-            {
-                state.Success &= AddMapping( monitor, state.Index, alias, target );
+                bool root = isRoot( c );
+                if( root ) state.Roots.Add( c );
+                foreach( var k in mapping.SingleKeys )
+                {
+                    if( !resourceGroup.IsAssignableFrom( k.Type ) ) continue;
+                    if( !state.SingleImplementations.TryGetValue( k, out var list ) )
+                    {
+                        list = new List<ICachedType>();
+                        state.SingleImplementations.Add( k, list );
+                    }
+                    list.Add( c );
+                }
+                if( root && state.Result.Add( c ) )
+                {
+                    state.Queue.Enqueue( c );
+                }
             }
         }
         if( !state.Success ) return null;
@@ -87,34 +108,16 @@ public static class ResPackageClosure
                 state.Follow( "AlsoRegisterType", new Ref( also ) );
             }
         }
-        return state.Success ? state.Result : null;
-
-        static bool AddMapping( IActivityMonitor monitor, Dictionary<object, ICachedType> index, object alias, ICachedType target )
+        // A single abstraction cannot have more than one kept implementation.
+        foreach( var (key, implementations) in state.SingleImplementations )
         {
-            if( !index.TryGetValue( target, out _ ) )
+            if( implementations.Count( state.Result.Contains ) > 1 )
             {
-                monitor.Error( $"Alias '{alias}' is mapped to '{target.CSharpName}' that is not a candidate package." );
-                return false;
+                monitor.Error( $"'{key.CSharpName}' is a single abstraction but more than one kept package implement it: '{implementations.Where( state.Result.Contains ).Select( i => i.CSharpName ).Order().Concatenate( "', '" )}'." );
+                state.Success = false;
             }
-            if( alias is ICachedType tAlias )
-            {
-                if( !tAlias.Type.IsAssignableFrom( target.Type ) )
-                {
-                    monitor.Error( $"Type '{tAlias.CSharpName}' cannot be mapped to '{target.CSharpName}' because it is not assignable from the package's Type." );
-                    return false;
-                }
-            }
-            else if( alias is not string s || string.IsNullOrWhiteSpace( s ) )
-            {
-                Throw.ArgumentException( nameof( singleMappings ), $"Alias must be a non empty string or a ICachedType: '{alias}' is invalid." );
-            }
-            if( !index.TryAdd( alias, target ) )
-            {
-                monitor.Error( $"Alias '{alias}' cannot be mapped to '{target.CSharpName}' as it is already mapped to '{index[alias].CSharpName}'." );
-                return false;
-            }
-            return true;
         }
+        return state.Success ? state.Result : null;
     }
 
     sealed class State
@@ -122,6 +125,8 @@ public static class ResPackageClosure
         readonly IActivityMonitor _monitor;
         readonly GlobalTypeCache _typeCache;
         public readonly Dictionary<object, ICachedType> Index = new();
+        public readonly HashSet<ICachedType> Roots = new();
+        public readonly Dictionary<ICachedType, List<ICachedType>> SingleImplementations = new();
         public readonly HashSet<ICachedType> Result = new();
         public readonly Queue<ICachedType> Queue = new();
         public ICachedType? Current;
@@ -137,15 +142,58 @@ public static class ResPackageClosure
         {
             Throw.DebugAssert( r.IsValid && !r.IsOptional && Current != null );
             object key = r._ref is Type t ? _typeCache.Get( t ) : r._ref;
-            if( Index.TryGetValue( key, out var target ) )
+            if( !Index.TryGetValue( key, out var target ) )
             {
-                if( Result.Add( target ) ) Queue.Enqueue( target );
+                if( key is ICachedType abstraction
+                    && abstraction.TryGetMapping( _monitor, out var mapping )
+                    && mapping.IsKey
+                    && typeof( IResourceGroup ).IsAssignableFrom( abstraction.Type ) )
+                {
+                    if( mapping.Cardinality == MappingCardinality.Multiple )
+                    {
+                        if( relName == "Package" )
+                        {
+                            _monitor.Error( $"The package of '{Current.CSharpName}' cannot be '{abstraction.CSharpName}' that is a multiple abstraction." );
+                            Success = false;
+                        }
+                        // A reference to a multiple abstraction never keeps a package.
+                        return;
+                    }
+                    target = ResolveSingle( abstraction );
+                    if( target == null )
+                    {
+                        Success = false;
+                        return;
+                    }
+                }
+                else
+                {
+                    _monitor.Error( $"'{Current.CSharpName}' references '{r.FullName}' ({relName}) that is not a candidate package." );
+                    Success = false;
+                    return;
+                }
+            }
+            if( Result.Add( target ) ) Queue.Enqueue( target );
+        }
+
+        ICachedType? ResolveSingle( ICachedType key )
+        {
+            SingleImplementations.TryGetValue( key, out var implementations );
+            if( implementations != null )
+            {
+                var roots = implementations.Where( Roots.Contains ).ToList();
+                if( roots.Count == 1 ) return roots[0];
+                if( roots.Count == 0 && implementations.Count == 1 ) return implementations[0];
+                _monitor.Error( $"""
+                    Ambiguous single abstraction '{key.CSharpName}' referenced by '{Current!.CSharpName}': it is implemented by '{implementations.Select( i => i.CSharpName ).Order().Concatenate( "', '" )}' and {(roots.Count == 0 ? "none of them is" : $"{roots.Count} of them are")} a root.
+                    Exactly one implementation must be a root, or be the only candidate.
+                    """ );
             }
             else
             {
-                _monitor.Error( $"'{Current.CSharpName}' references '{r.FullName}' ({relName}) that is not a candidate package." );
-                Success = false;
+                _monitor.Error( $"No candidate package implements '{key.CSharpName}' (a single abstraction) referenced by '{Current!.CSharpName}'." );
             }
+            return null;
         }
     }
 

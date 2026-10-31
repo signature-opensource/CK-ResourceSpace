@@ -60,28 +60,6 @@ sealed class ResPackageDescriptorContext
         return true;
     }
 
-    internal bool AddSingleMapping( IActivityMonitor monitor, ICachedType alias, ResPackageDescriptor p )
-    {
-        if( p.Type == null )
-        {
-            monitor.Error( $"Type '{alias:N}' cannot be mapped to '{p.FullName}' because this package is not defined by a Type." );
-            return false;
-        }
-        if( !alias.Type.IsAssignableFrom( p.Type.Type ) )
-        {
-            monitor.Error( $"Type '{alias:N}' cannot be mapped to '{p.FullName}' because it is not assignable from the package's Type." );
-            return false;
-        }
-        if( _packageIndex.TryGetValue( alias, out var exist ) )
-        {
-            monitor.Error( $"Type '{alias:N}' cannot be mapped to '{p.FullName}' as it is already mapped to '{exist.FullName}'." );
-            return false;
-        }
-        ++_singleMappingCount;
-        _packageIndex.Add( alias, p );
-        return true;
-    }
-
     // Called when a definitely optional package is removed: its mappings are removed from the package index.
     internal void OnSingleMappingsRemoved( int count )
     {

@@ -117,11 +117,44 @@ only**: a kept package keeps the targets of its required references (its package
 `Groups` to a kept package is not kept because of it, and an `[Optional...]` reference never keeps anything.
 A required reference to an unregistered package fails, unless a `ResSpaceConfiguration.PackageResolver` registers it.
 
-[`ResPackageClosure.Compute`](Builder/ResPackageClosure.cs) computes this set from the types' attributes alone,
-before any descriptor exists: given the candidate types, the roots (the ones that will be registered as required)
-and the single mappings the descriptors will have, it returns the typed packages the space will keep, or null
-when a required reference is not a candidate. A relation added to a descriptor by code (`ResPackageDescriptor.Requires`
-is mutable) is not seen by it: to be known in advance, a relation must be declared by an attribute.
+[`ResPackageClosure.Compute`](Builder/ResPackageClosure.cs) computes this set from the types alone, before any
+descriptor exists: given the candidate types and the roots (the ones that will be registered as required), it
+returns the typed packages the space will keep, or null when a required reference cannot be resolved among the
+candidates. A relation or a name mapping added to a descriptor by code (`ResPackageDescriptor.Requires` is mutable,
+`ResPackageDescriptor.AddSingleMapping` maps a name) is not seen by it: to be known in advance, a relation must be
+declared by an attribute.
+
+## Abstractions are mapped to their implementations, automatically.
+
+A typed package is mapped to the abstractions it implements, as computed once by the type cache
+(`ICachedType.TryGetMapping`, see the mapping contracts of
+[CK.Abstractions](https://github.com/signature-opensource/CK-Abstractions/blob/stable/CK.Abstractions/Core/README.md#mappings-isinglemappingattribute-imultiplemappingattribute-and-inotmappedattribute)):
+the single and multiple abstractions (interfaces or abstract classes) that are `IResourceGroup`. The mapping is
+automatic, the membership is not: an abstraction never registers a package, and a reference to an abstraction
+follows these rules.
+
+- **A reference to a single abstraction** resolves to its implementation among the registered packages: the only one
+  registered as required (before any promotion), otherwise the only one registered. Otherwise a required reference
+  is an error ("Ambiguous single abstraction" or no implementation). This is how a configuration chooses: two
+  configurations register different implementations as required. After the sort, a single abstraction cannot have
+  more than one kept implementation. The kept implementation is indexed by the abstraction in `ResCoreData.PackageIndex`.
+- **A reference to a multiple abstraction never keeps a package** (like an `[Optional...]` one): once the optional
+  packages are removed, it is expanded to the kept implementations. `Requires<IPlugin>` comes after all the kept
+  plugins, `Children<IPlugin>` contains them. `ResCoreData.MultipleMappings` maps each multiple abstraction to its
+  kept implementations, in the topological order.
+- **An abstraction cannot be registered** as a package, and a package cannot be the `[Package]` of a multiple one.
+- **A not mapped package** (`INotMappedAttribute`) is not an implementation of its abstractions: only its own type
+  can reach it. Registered as optional, it is kept only if something references its type.
+
+A plugin requires its host, so the host must not reference its plugins' abstraction: a later package can. A plugin
+that requires a host referencing its multiple abstraction (by `Children` or `Requires`) is a cycle as soon as both
+are kept; this is an error at registration time, whatever the selection:
+
+```
+'HostPlugin' requires 'Host' that references 'IHostPlugin' (in its Children), a multiple abstraction that 'HostPlugin' implements.
+```
+
+A longer cycle that goes through an expanded relationship names the abstraction: `'Gatherer' requires 'CyclingPlugin' (through 'ICyclingPlugin')`.
 
 ## Handlers project, installers write, and that is the whole contract.
 

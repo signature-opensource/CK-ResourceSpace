@@ -73,6 +73,10 @@ public sealed class ResSpaceCollector : IResPackageDescriptorRegistrar
 
     internal int SingleMappingCount => _coreCollector.SingleMappingCount;
 
+    internal IReadOnlyDictionary<ICachedType, List<ResPackageDescriptor>> SingleKeyImplementers => _coreCollector.SingleKeyImplementers;
+
+    internal IReadOnlyDictionary<ICachedType, List<ResPackageDescriptor>> MultipleKeyImplementers => _coreCollector.MultipleKeyImplementers;
+
     /// <summary>
     /// Gets or sets the configured Code generated resource container.
     /// This can only be set if this has not been previously set (ie. this is null).

@@ -16,7 +16,12 @@ public sealed partial class ResPackageDescriptor
     readonly NormalizedPath _defaultTargetPath;
     readonly StoreContainer _resources;
     readonly StoreContainer _afterResources;
-    List<object>? _singleMappings;
+    List<string>? _singleMappings;
+    // The multiple keys (that are resource groups) this package implements.
+    internal List<ICachedType>? _multipleKeys;
+    // Whether this package has been registered as a required one (before any promotion):
+    // this resolves the single abstractions.
+    internal bool _initiallyRequired;
     // Accessed by the CoreCollector during topological sort.
     // The sorter sets this to null if only optional references were in it.
     internal List<Ref>? _requires;
@@ -106,6 +111,10 @@ public sealed partial class ResPackageDescriptor
     /// Adds a mapping from a name to this package descriptor.
     /// The <paramref name="alias"/> must not be already associated to a package descriptor
     /// otherwise an error is logged and false is returned.
+    /// <para>
+    /// The types are mapped automatically: a typed package is mapped to the single and multiple abstractions
+    /// it implements (see <see cref="ICachedType.TryGetMapping(IActivityMonitor, out CachedTypeMapping?)"/>).
+    /// </para>
     /// </summary>
     /// <param name="monitor">The monitor to use.</param>
     /// <param name="alias">The name to map to this descriptor.</param>
@@ -116,42 +125,14 @@ public sealed partial class ResPackageDescriptor
         Throw.CheckNotNullOrWhiteSpaceArgument( alias );
         if( _context.AddSingleMapping( monitor, alias, this ) )
         {
-            _singleMappings ??= new List<object>();
+            _singleMappings ??= new List<string>();
             _singleMappings.Add( alias );
             return true;
         }
         return false;
     }
 
-    /// <summary>
-    /// Adds a mapping from a type to this package descriptor:
-    /// <list type="number">
-    ///     <item>This <see cref="Type"/> must not be null.</item>
-    ///     <item>The <paramref name="alias"/> must be assignable from <see cref="Type"/>.</item>
-    ///     <item>The <paramref name="alias"/> must not be already associated to a package descriptor.</item>
-    /// </list>
-    /// If any of these conditions is not met, an error is logged and false is returned.
-    /// </summary>
-    /// <param name="monitor">The monitor to use.</param>
-    /// <param name="alias">The type to map to this descriptor.</param>
-    /// <returns>True on success, false on error.</returns>
-    public bool AddSingleMapping( IActivityMonitor monitor, ICachedType alias )
-    {
-        ThrowOnClosedContext();
-        Throw.CheckNotNullArgument( alias );
-        if( _context.AddSingleMapping( monitor, alias, this ) )
-        {
-            _singleMappings ??= new List<object>();
-            _singleMappings.Add( alias );
-            return true;
-        }
-        return false;
-    }
-
-    /// <inheritdoc cref="AddSingleMapping(IActivityMonitor, ICachedType)"/>
-    public bool AddSingleMapping( IActivityMonitor monitor, Type alias ) => AddSingleMapping( monitor, _context.TypeCache.Get( alias ) );
-
-    internal IReadOnlyList<object>? SingleMappings => _singleMappings;
+    internal IReadOnlyList<string>? SingleMappings => _singleMappings;
 
     /// <summary>
     /// Gets the default target path that will prefix resources that are items.

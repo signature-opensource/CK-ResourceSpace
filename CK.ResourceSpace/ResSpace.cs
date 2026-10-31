@@ -23,7 +23,7 @@ public sealed partial class ResSpace
     /// <summary>
     /// The current serialization format version.
     /// </summary>
-    public static readonly byte CurrentVersion = 0;
+    public static readonly byte CurrentVersion = 1;
 
     readonly ResCoreData _data;
     readonly ImmutableArray<ResourceSpaceFolderHandler> _folderHandlers;

@@ -16,41 +16,30 @@ namespace CK.ResourceSpace.Tests
     {
         // Registers the candidates (the roots as required, the other ones as optional), builds the ResSpace data,
         // and checks that the closure is the set of kept typed packages.
-        static HashSet<ICachedType> CheckSameAsResSpace( Type[] candidates,
-                                                         Type[] roots,
-                                                         Action<ResSpaceConfiguration, IReadOnlyDictionary<Type, ResPackageDescriptor>>? configure = null,
-                                                         Dictionary<Type, Type>? singleMappings = null )
+        internal static HashSet<ICachedType> CheckSameAsResSpace( Type[] candidates, Type[] roots ) => CheckSameAsResSpace( candidates, roots, out _ );
+
+        internal static HashSet<ICachedType> CheckSameAsResSpace( Type[] candidates, Type[] roots, out ResCoreData coreData )
         {
             var config = new ResSpaceConfiguration();
             var cache = config.TypeCache;
-            var descriptors = new Dictionary<Type, ResPackageDescriptor>();
             foreach( var t in candidates )
             {
-                descriptors.Add( t, config.RegisterPackage( TestHelper.Monitor, t, isOptional: !roots.Contains( t ) ).ShouldNotBeNull() );
+                config.RegisterPackage( TestHelper.Monitor, t, isOptional: !roots.Contains( t ) ).ShouldNotBeNull();
             }
-            if( singleMappings != null )
-            {
-                foreach( var (alias, target) in singleMappings )
-                {
-                    descriptors[target].AddSingleMapping( TestHelper.Monitor, alias ).ShouldBeTrue();
-                }
-            }
-            configure?.Invoke( config, descriptors );
             var collector = config.Build( TestHelper.Monitor ).ShouldNotBeNull();
-            var coreData = new ResSpaceDataBuilder( collector ).Build( TestHelper.Monitor ).ShouldNotBeNull().CoreData;
+            coreData = new ResSpaceDataBuilder( collector ).Build( TestHelper.Monitor ).ShouldNotBeNull().CoreData;
             var kept = coreData.Packages.Select( p => p.Type ).Where( t => t != null ).ToHashSet();
 
             var closure = ResPackageClosure.Compute( TestHelper.Monitor,
                                                      cache,
                                                      candidates.Select( cache.Get ),
-                                                     t => roots.Contains( t.Type ),
-                                                     singleMappings?.ToDictionary( kv => (object)cache.Get( kv.Key ), kv => cache.Get( kv.Value ) ) )
+                                                     t => roots.Contains( t.Type ) )
                                       .ShouldNotBeNull();
             closure.Select( t => t.Type.Name ).Order().ShouldBe( kept.Select( t => t!.Type.Name ).Order() );
             return closure;
         }
 
-        static string[] Names( HashSet<ICachedType> closure ) => closure.Select( t => t.Type.Name ).Order().ToArray();
+        internal static string[] Names( HashSet<ICachedType> closure ) => closure.Select( t => t.Type.Name ).Order().ToArray();
 
         static readonly Type[] _all = [typeof( Root ), typeof( A ), typeof( B ), typeof( C ), typeof( G ), typeof( P ),
                                        typeof( D ), typeof( E ), typeof( F ), typeof( H ), typeof( Unrelated )];
@@ -89,14 +78,6 @@ namespace CK.ResourceSpace.Tests
                         .ShouldBe( withAttribute.Where( t => t.Type != byAttribute ).Select( t => t.Type.Name ), ignoreOrder: true );
             // The optional relations keep nothing.
             (withAttribute.Count == 1).ShouldBe( byAttribute.Name.StartsWith( "Optional" ) );
-        }
-
-        [Test]
-        public void a_reference_is_resolved_through_the_single_mappings()
-        {
-            var mappings = new Dictionary<Type, Type> { { typeof( IAbstractComponent ), typeof( ConcreteComponent ) } };
-            var closure = CheckSameAsResSpace( [typeof( UsesAbstraction ), typeof( ConcreteComponent )], [typeof( UsesAbstraction )], singleMappings: mappings );
-            Names( closure ).ShouldBe( ["ConcreteComponent", "UsesAbstraction"] );
         }
 
         [Test]
@@ -161,18 +142,18 @@ namespace CK.ResourceSpace.Tests
         }
 
         [Test]
-        public void the_single_mappings_of_a_dropped_optional_package_are_removed()
+        public void the_name_mappings_of_a_dropped_optional_package_are_removed()
         {
             var config = new ResSpaceConfiguration();
             config.RegisterPackage( TestHelper.Monitor, typeof( Unrelated ), isOptional: false ).ShouldNotBeNull();
-            var dropped = config.RegisterPackage( TestHelper.Monitor, typeof( ConcreteComponent ), isOptional: true ).ShouldNotBeNull();
-            dropped.AddSingleMapping( TestHelper.Monitor, typeof( IAbstractComponent ) ).ShouldBeTrue();
+            var dropped = config.RegisterPackage( TestHelper.Monitor, typeof( B ), isOptional: true ).ShouldNotBeNull();
             dropped.AddSingleMapping( TestHelper.Monitor, "SomeAlias" ).ShouldBeTrue();
+            dropped.AddSingleMapping( TestHelper.Monitor, "OtherAlias" ).ShouldBeTrue();
 
             var collector = config.Build( TestHelper.Monitor ).ShouldNotBeNull();
             var coreData = new ResSpaceDataBuilder( collector ).Build( TestHelper.Monitor ).ShouldNotBeNull().CoreData;
             collector.PackageIndex.ContainsKey( "SomeAlias" ).ShouldBeFalse();
-            collector.FindByType( config.TypeCache.Get( typeof( IAbstractComponent ) ) ).ShouldBeNull();
+            collector.PackageIndex.ContainsKey( "OtherAlias" ).ShouldBeFalse();
             coreData.PackageIndex.ContainsKey( "SomeAlias" ).ShouldBeFalse();
         }
     }
@@ -246,9 +227,6 @@ namespace CK.ResourceSpace.Tests.Closure
         [EmbeddedResourceType, Topology( OptionalGroups = [typeof( TargetGroup )] )] sealed class OptionalGroups : IResourcePackage { }
     }
 
-    interface IAbstractComponent : IResourcePackage { }
-    [EmbeddedResourceType] sealed class ConcreteComponent : IAbstractComponent { }
-    [EmbeddedResourceType, Requires<IAbstractComponent>] sealed class UsesAbstraction : IResourcePackage { }
 
     [EmbeddedResourceType, Package<P>, Topology( Package = typeof( P ) )] sealed class TwoPackages : IResourcePackage { }
     [EmbeddedResourceType, Topology( Requires = [typeof( string )] )] sealed class InvalidTopology : IResourcePackage { }

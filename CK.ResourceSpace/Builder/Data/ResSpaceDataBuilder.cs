@@ -1,4 +1,5 @@
 using CK.EmbeddedResources;
+using CK.Engine.TypeCollector;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -150,8 +151,13 @@ public sealed class ResSpaceDataBuilder
         // - 1 FullName per ResPackageDescriptor.
         // - Plus the type for the typed package.
         // - Plus the number of single mappings.
+        // - Plus the single abstractions that have a (necessarily unique) kept implementation.
         // - Plus the name of the "<Code>" and "<App>" packages.
-        var packageIndexSize = descriptorPackageCount + _collector.SingleMappingCount + _collector.TypedPackageCount + 2;
+        var keptSingleKeys = _collector.SingleKeyImplementers
+                                       .Select( kv => (Key: kv.Key, Package: kv.Value.FirstOrDefault( d => !d.IsOptional )) )
+                                       .Where( k => k.Package != null )
+                                       .ToList();
+        var packageIndexSize = descriptorPackageCount + _collector.SingleMappingCount + _collector.TypedPackageCount + keptSingleKeys.Count + 2;
         // The final size of the _resourceIndex (the IResourceContainer to IResPackageResources map
         // for BeforeResources and AfterResources plus the GeneratedCodeContainer or the wrapper).
         // This is by default. AppResourcesLocalPath can add 1 more key.
@@ -322,6 +328,22 @@ public sealed class ResSpaceDataBuilder
                                            bAll.Count );
         bAll.Add( appPackage );
         packageIndex.Add( appPackage.FullName, appPackage );
+        // The single abstractions are mapped to their kept implementation.
+        foreach( var (key, d) in keptSingleKeys )
+        {
+            packageIndex.Add( key, packageIndex[d!.FullName] );
+        }
+        // The multiple abstractions are mapped to their kept implementations (in the topological order).
+        var multipleMappings = new Dictionary<ICachedType, ImmutableArray<ResPackage>>();
+        foreach( var (key, implementations) in _collector.MultipleKeyImplementers )
+        {
+            var kept = implementations.Where( d => !d.IsOptional )
+                                      .Select( d => packageIndex[d.FullName] )
+                                      .OrderBy( p => p.Index )
+                                      .ToImmutableArray();
+            if( kept.Length > 0 ) multipleMappings.Add( key, kept );
+        }
+        space._multipleMappings = multipleMappings;
         Throw.DebugAssert( appPackage.Resources.Index == allPackageResources.Length - 2 );
         allPackageResources[^2] = appPackage.Resources;
         Throw.DebugAssert( appPackage.AfterResources.Index == allPackageResources.Length - 1 );
@@ -340,7 +362,7 @@ public sealed class ResSpaceDataBuilder
         }
         if( monitor.ShouldLogLine( LogLevel.Debug, null, out _ ) )
         {
-            using( monitor.OpenDebug( "TypeScript packages structure:" ) )
+            using( monitor.OpenDebug( "Packages structure:" ) )
             {
                 monitor.Debug(
                     bAll.Skip( 1 )

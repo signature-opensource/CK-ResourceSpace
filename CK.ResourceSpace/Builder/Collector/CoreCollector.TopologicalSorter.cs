@@ -22,6 +22,8 @@ sealed partial class CoreCollector
         // as well as failure (null value) to avoid repeated calls to package resolver
         // (or ResPackageDescriptor.CheckContext).
         readonly Dictionary<object, object?> _resolved;
+        // The abstraction from which a relationship (P1 requires or contains P2) has been expanded.
+        Dictionary<(ResPackageDescriptor, ResPackageDescriptor), ICachedType>? _origins;
 
         public TopologicalSorter( IActivityMonitor monitor, CoreCollector collector )
         {
@@ -37,6 +39,10 @@ sealed partial class CoreCollector
             {
                 // Still optional packages can now be removed from the index.
                 HandleOptionalPackages();
+                // The kept packages are known: a single abstraction must have at most one kept implementation
+                // and the remaining references to abstractions are expanded to their kept implementations.
+                if( !CheckSingleUnicity() ) return false;
+                ExpandAbstractionReferences();
                 // Second step: normalize the relationships to only have to deal with Requires and Children/Groups.
                 //      - Transfer any RequiredBy to corresponding Requires
                 //      - Transfer Package as a Children of its corresponding package.
@@ -125,6 +131,63 @@ sealed partial class CoreCollector
             }
         }
 
+
+        bool CheckSingleUnicity()
+        {
+            bool success = true;
+            foreach( var (key, implementations) in _collector._singleKeyImplementers )
+            {
+                if( implementations.Count( d => !d.IsOptional ) > 1 )
+                {
+                    _monitor.Error( $"'{key.CSharpName}' is a single abstraction but more than one kept package implement it: '{implementations.Where( d => !d.IsOptional ).Select( d => d.FullName ).Order().Concatenate( "', '" )}'." );
+                    success = false;
+                }
+            }
+            return success;
+        }
+
+        // Replaces the references to an abstraction (a multiple one, or a single one that has been optionally referenced)
+        // by references to its kept implementations. The origin of the expanded relationships is memorized for the
+        // cycle error message.
+        void ExpandAbstractionReferences()
+        {
+            foreach( var p in _collector._packages )
+            {
+                Expand( p, ref p._requires, isReverse: false );
+                Expand( p, ref p._requiredBy, isReverse: true );
+                Expand( p, ref p._children, isReverse: false );
+                Expand( p, ref p._groups, isReverse: true );
+            }
+        }
+
+        void Expand( ResPackageDescriptor p, ref List<Ref>? refs, bool isReverse )
+        {
+            if( refs == null ) return;
+            List<Ref>? expanded = null;
+            for( int i = 0; i < refs.Count; i++ )
+            {
+                var r = refs[i];
+                var key = r._ref is Type t ? _collector.TypeCache.Get( t ) : r._ref as ICachedType;
+                if( key == null
+                    || !(_collector._multipleKeyImplementers.TryGetValue( key, out var implementations )
+                         || _collector._singleKeyImplementers.TryGetValue( key, out implementations )) )
+                {
+                    expanded?.Add( r );
+                    continue;
+                }
+                expanded ??= refs.GetRange( 0, i );
+                foreach( var d in implementations )
+                {
+                    if( !d.IsOptional && d != p )
+                    {
+                        expanded.Add( d );
+                        _origins ??= new Dictionary<(ResPackageDescriptor, ResPackageDescriptor), ICachedType>();
+                        _origins[isReverse ? (d, p) : (p, d)] = key;
+                    }
+                }
+            }
+            if( expanded != null ) refs = expanded;
+        }
 
         #region First step: initial resolution of references.
         bool InitialResolve()
@@ -276,7 +339,31 @@ sealed partial class CoreCollector
             }
             // Mapping from FullName or ICachedType to the package: this is were
             // SingleMapping is resolved.
-            if( _packageIndex.TryGetValue( r._ref, out var result ) )
+            if( !_packageIndex.TryGetValue( r._ref, out var result )
+                && r._ref is ICachedType key
+                && IsResourceKey( key, out var cardinality ) )
+            {
+                // A reference to an abstraction (a mapping key).
+                if( cardinality == MappingCardinality.Multiple )
+                {
+                    if( relName == "Package" )
+                    {
+                        _monitor.Error( $"The package of a package cannot be '{key.CSharpName}' that is a multiple abstraction." );
+                        return Ref.Invalid;
+                    }
+                    // A reference to a multiple abstraction never keeps a package: it is
+                    // expanded to the kept implementations once the optional packages are removed.
+                    return new Ref( key, optional: true );
+                }
+                result = ResolveSingle( key, r.IsOptional );
+                if( result == null )
+                {
+                    // An optional reference is resolved to the kept implementation (if any) once
+                    // the optional packages are removed.
+                    return r.IsOptional ? r : Ref.Invalid;
+                }
+            }
+            if( result != null )
             {
                 // The package is known. It is not optional, we are done
                 // whether the reference is optional or not: the reference
@@ -307,6 +394,58 @@ sealed partial class CoreCollector
             // The package is unknown but this is a required reference.
             // => Time for the package resolver to kick in (if it exists).
             return InitialResolveWithResolvers( r );
+        }
+
+        bool IsResourceKey( ICachedType type, out MappingCardinality cardinality )
+        {
+            cardinality = MappingCardinality.None;
+            if( type.TryGetMapping( _monitor, out var mapping )
+                && mapping.IsKey
+                && typeof( IResourceGroup ).IsAssignableFrom( type.Type ) )
+            {
+                cardinality = mapping.Cardinality;
+                return true;
+            }
+            return false;
+        }
+
+        // Resolves a single abstraction among its registered implementations:
+        // 1. Exactly one is registered as required (before any promotion): this is the one.
+        // 2. Otherwise, exactly one is registered (optional or not): this is the one.
+        // 3. Otherwise this is an error (ambiguous or no implementation) when the reference is required.
+        ResPackageDescriptor? ResolveSingle( ICachedType key, bool isOptionalRef )
+        {
+            _collector._singleKeyImplementers.TryGetValue( key, out var implementations );
+            ResPackageDescriptor? required = null;
+            int requiredCount = 0;
+            if( implementations != null )
+            {
+                foreach( var d in implementations )
+                {
+                    if( d._initiallyRequired )
+                    {
+                        required = d;
+                        ++requiredCount;
+                    }
+                }
+                if( requiredCount == 1 ) return required;
+                if( requiredCount == 0 && implementations.Count == 1 ) return implementations[0];
+            }
+            if( !isOptionalRef )
+            {
+                if( implementations == null )
+                {
+                    _monitor.Error( $"No registered package implements '{key.CSharpName}' (a single abstraction)." );
+                }
+                else
+                {
+                    _monitor.Error( $"""
+                        Ambiguous single abstraction '{key.CSharpName}': it is implemented by '{implementations.Select( d => d.FullName ).Order().Concatenate( "', '" )}' and {(requiredCount == 0 ? "none of them is" : $"{requiredCount} of them are")} registered as required.
+                        Exactly one implementation must be registered as required, or be the only registered one.
+                        """ );
+                }
+            }
+            return null;
         }
 
         Ref InitialResolveWithResolvers( Ref r )
@@ -475,7 +614,7 @@ sealed partial class CoreCollector
                 return false;
             }
 
-            internal readonly string BuildCyclicError()
+            internal readonly string BuildCyclicError( Dictionary<(ResPackageDescriptor, ResPackageDescriptor), ICachedType>? origins )
             {
                 Throw.DebugAssert( CycleErrors != null );
                 var b = new StringBuilder();
@@ -487,6 +626,10 @@ sealed partial class CoreCollector
                     b.Append( '\'' ).Append( e.P1.FullName ).Append( '\'' )
                      .Append( e.R switch { Relationship.Requires => " requires ", _ => " contains " } )
                      .Append( '\'' ).Append( e.P2.FullName ).Append( '\'' );
+                    if( origins != null && origins.TryGetValue( (e.P1, e.P2), out var key ) )
+                    {
+                        b.Append( " (through '" ).Append( key.CSharpName ).Append( "')" );
+                    }
                 }
                 return b.ToString();
             }
@@ -542,7 +685,7 @@ sealed partial class CoreCollector
             {
                 _monitor.Error( $"""
                     Cyclic dependency error:
-                    {context.BuildCyclicError()}
+                    {context.BuildCyclicError( _origins )}
                     """ );
                 return false;
             }
@@ -702,7 +845,9 @@ sealed partial class CoreCollector
                     return r.AsPackageDescriptor;
                 }
                 // The reference is optional. It may now be resolvable.
-                if( _resolved.TryGetValue( r._ref, out var resolved )
+                // The resolution cache is keyed by the FullName (and the Type): the reference itself
+                // may be a ICachedType (a converted Type).
+                if( _resolved.TryGetValue( r.FullName, out var resolved )
                     && resolved is ResPackageDescriptor p
                     && !p.IsOptional )
                 {

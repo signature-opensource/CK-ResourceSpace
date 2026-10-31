@@ -39,6 +39,7 @@ public sealed partial class ResCoreData
     [AllowNull]internal ResPackage _codePackage;
     [AllowNull]internal ResPackage _appPackage;
     internal string? _watchRoot;
+    [AllowNull] internal IReadOnlyDictionary<ICachedType, ImmutableArray<ResPackage>> _multipleMappings;
 
     internal ResCoreData( IResourceContainer? generatedCodeContainer,
                           string cKWatchFolderPath,
@@ -62,6 +63,16 @@ public sealed partial class ResCoreData
     /// the package is defined by a type).
     /// </summary>
     public IReadOnlyDictionary<object, ResPackage> PackageIndex => _packageIndex;
+
+    /// <summary>
+    /// Gets the multiple abstractions (see <see cref="IMultipleMappingAttribute"/>) mapped to their implementations
+    /// (in the topological order). Only the abstractions that have at least one implementation appear.
+    /// <para>
+    /// The single abstractions (see <see cref="ISingleMappingAttribute"/>) are mapped to their implementation
+    /// in the <see cref="PackageIndex"/>.
+    /// </para>
+    /// </summary>
+    public IReadOnlyDictionary<ICachedType, ImmutableArray<ResPackage>> MultipleMappings => _multipleMappings;
 
     /// <summary>
     /// Gets the "&lt;Code&gt;" head package.

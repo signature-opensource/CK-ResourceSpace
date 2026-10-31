@@ -2,6 +2,7 @@ using CK.EmbeddedResources;
 using CK.Engine.TypeCollector;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace CK.Core;
 
@@ -21,6 +22,10 @@ sealed partial class CoreCollector : IResPackageDescriptorRegistrar
     // removes the eventually non optional packages from this list.
     readonly List<ResPackageDescriptor> _optionalPackages;
     readonly ResPackageDescriptorContext _packageDescriptorContext;
+    // The registered packages (optional or not) that implement the single and multiple mapping keys
+    // that are resource groups (see ICachedType.TryGetMapping).
+    readonly Dictionary<ICachedType, List<ResPackageDescriptor>> _singleKeyImplementers;
+    readonly Dictionary<ICachedType, List<ResPackageDescriptor>> _multipleKeyImplementers;
 
     // Set by ResSpaceConfiguration.
     internal IResPackageDescriptorResolver? _packageResolver;
@@ -42,6 +47,8 @@ sealed partial class CoreCollector : IResPackageDescriptorRegistrar
         _packageIndex = new Dictionary<object, ResPackageDescriptor>();
         _packages = new List<ResPackageDescriptor>();
         _optionalPackages = new List<ResPackageDescriptor>();
+        _singleKeyImplementers = new Dictionary<ICachedType, List<ResPackageDescriptor>>();
+        _multipleKeyImplementers = new Dictionary<ICachedType, List<ResPackageDescriptor>>();
         _packageDescriptorContext = new ResPackageDescriptorContext( _packageIndex, typeCache );
         _typeCache = typeCache;
         _allowedTypes = allowedTypes;
@@ -99,11 +106,50 @@ sealed partial class CoreCollector : IResPackageDescriptorRegistrar
             monitor.Error( $"Type '{type.CSharpName}' cannot be registered, it doesn't belong to the allowed type set." );
             return null;
         }
+        if( !type.TryGetMapping( monitor, out var mapping ) )
+        {
+            return null;
+        }
+        if( mapping.IsKey )
+        {
+            monitor.Error( $"Type '{type.CSharpName}' is an abstraction (it has a {mapping.Cardinality} mapping): it cannot be registered as a package." );
+            return null;
+        }
         IResourceContainer resourceStore = type.Type.CreateResourcesContainer( monitor, ignoreLocal: ignoreLocal );
         IResourceContainer resourceAfterStore = type.Type.CreateResourcesContainer( monitor, resAfter: true, ignoreLocal: ignoreLocal );
-        return resourceStore.IsValid && resourceAfterStore.IsValid
-            ? DoRegister( monitor, type.Type.FullName!, type, defaultTargetPath, resourceStore, resourceAfterStore, isOptional )
-            : null;
+        var p = resourceStore.IsValid && resourceAfterStore.IsValid
+                    ? DoRegister( monitor, type.Type.FullName!, type, defaultTargetPath, resourceStore, resourceAfterStore, isOptional )
+                    : null;
+        if( p != null )
+        {
+            // The mapping is automatic: the package is an implementation of its keys that are resource groups
+            // (the other ones are the concern of other engines).
+            var resourceGroup = typeof( IResourceGroup );
+            foreach( var k in mapping.SingleKeys )
+            {
+                if( resourceGroup.IsAssignableFrom( k.Type ) ) AddImplementer( _singleKeyImplementers, k, p );
+            }
+            foreach( var k in mapping.MultipleKeys )
+            {
+                if( resourceGroup.IsAssignableFrom( k.Type ) )
+                {
+                    AddImplementer( _multipleKeyImplementers, k, p );
+                    p._multipleKeys ??= new List<ICachedType>();
+                    p._multipleKeys.Add( k );
+                }
+            }
+        }
+        return p;
+
+        static void AddImplementer( Dictionary<ICachedType, List<ResPackageDescriptor>> index, ICachedType key, ResPackageDescriptor p )
+        {
+            if( !index.TryGetValue( key, out var list ) )
+            {
+                list = new List<ResPackageDescriptor>();
+                index.Add( key, list );
+            }
+            list.Add( p );
+        }
     }
 
     ResPackageDescriptor? DoRegister( IActivityMonitor monitor,
@@ -143,6 +189,7 @@ sealed partial class CoreCollector : IResPackageDescriptorRegistrar
         {
             return null;
         }
+        p._initiallyRequired = !p.IsOptional;
         if( p.IsOptional )
         {
             _optionalPackages.Add( p );
@@ -205,6 +252,10 @@ sealed partial class CoreCollector : IResPackageDescriptorRegistrar
     public IReadOnlyDictionary<object, ResPackageDescriptor> PackageIndex => _packageIndex;
 
     public IReadOnlyCollection<ResPackageDescriptor> Packages => _packages;
+
+    internal IReadOnlyDictionary<ICachedType, List<ResPackageDescriptor>> SingleKeyImplementers => _singleKeyImplementers;
+
+    internal IReadOnlyDictionary<ICachedType, List<ResPackageDescriptor>> MultipleKeyImplementers => _multipleKeyImplementers;
 
     public int LocalPackageCount => _localPackageCount;
 
@@ -271,6 +322,10 @@ sealed partial class CoreCollector : IResPackageDescriptorRegistrar
         }
         if( success )
         {
+            success = CheckHostsDontReferenceTheirPlugins( monitor );
+        }
+        if( success )
+        {
             var sorter = new TopologicalSorter( monitor, this );
             success = sorter.Run();
         }
@@ -278,6 +333,60 @@ sealed partial class CoreCollector : IResPackageDescriptorRegistrar
         finalOptionalPackages = _optionalPackages;
         codeHandledResources = _packageDescriptorContext.Close();
         return success;
+    }
+
+    // A package that implements a multiple abstraction (a plugin) and requires a package (its host) that references this
+    // abstraction by its Children or Requires is a cycle as soon as both are kept: this is detected here, regardless of
+    // the selection (optional packages included).
+    bool CheckHostsDontReferenceTheirPlugins( IActivityMonitor monitor )
+    {
+        bool success = true;
+        foreach( var p in _packages.Concat( _optionalPackages ) )
+        {
+            if( p._multipleKeys == null || p._requires == null ) continue;
+            foreach( var r in p._requires )
+            {
+                var host = FindRegistered( r );
+                if( host == null || host == p ) continue;
+                foreach( var key in p._multipleKeys )
+                {
+                    var rel = References( host._children, key )
+                                ? "Children"
+                                : References( host._requires, key )
+                                    ? "Requires"
+                                    : null;
+                    if( rel != null )
+                    {
+                        monitor.Error( $"""
+                            '{p}' requires '{host}' that references '{key.CSharpName}' (in its {rel}), a multiple abstraction that '{p}' implements.
+                            A plugin requires its host: the host must not reference its plugins' abstraction (a later package can).
+                            """ );
+                        success = false;
+                    }
+                }
+            }
+        }
+        return success;
+
+        ResPackageDescriptor? FindRegistered( ResPackageDescriptor.Ref r ) => r._ref switch
+        {
+            ResPackageDescriptor d => d,
+            Type t => _packageIndex.GetValueOrDefault( _typeCache.Get( t ) ),
+            object o => _packageIndex.GetValueOrDefault( o ),
+            _ => null
+        };
+
+        static bool References( List<ResPackageDescriptor.Ref>? refs, ICachedType key )
+        {
+            if( refs != null )
+            {
+                foreach( var r in refs )
+                {
+                    if( r._ref is Type t ? t == key.Type : r._ref == key ) return true;
+                }
+            }
+            return false;
+        }
     }
 
     bool EnsureAlsoRegistrations( IActivityMonitor monitor, ResPackageDescriptor p )

@@ -7,7 +7,7 @@ using System.ComponentModel;
 
 namespace CK.Core;
 
-[SerializationVersion(0)]
+[SerializationVersion(1)]
 public sealed partial class ResCoreData : ICKSlicedSerializable
 {
     /// <summary>
@@ -27,6 +27,9 @@ public sealed partial class ResCoreData : ICKSlicedSerializable
         _resourceIndex = d.ReadObject<IReadOnlyDictionary<IResourceContainer, IResPackageResources>>();
         _codeHandledResources = d.ReadObject<IReadOnlySet<ResourceLocator>>();
         _excludedOptionalResourcePaths = d.ReadValue<ImmutableArray<string>>();
+        _multipleMappings = info.Version >= 1
+                                ? d.ReadObject<IReadOnlyDictionary<ICachedType, ImmutableArray<ResPackage>>>()
+                                : ImmutableDictionary<ICachedType, ImmutableArray<ResPackage>>.Empty;
         _codePackage = _packages[0];
         _appPackage = _packages[^1];
 
@@ -52,6 +55,7 @@ public sealed partial class ResCoreData : ICKSlicedSerializable
         s.WriteObject( o._resourceIndex );
         s.WriteObject( o._codeHandledResources );
         s.WriteValue( o._excludedOptionalResourcePaths );
+        s.WriteObject( o._multipleMappings );
 
         ICKBinaryWriter w = s.Writer;
         ((ResCoreDataCache)o._resPackageDataCache).Write( w );
