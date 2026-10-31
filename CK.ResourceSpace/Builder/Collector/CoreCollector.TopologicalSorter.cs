@@ -111,20 +111,19 @@ sealed partial class CoreCollector
                     }
                     _monitor.UnfilteredLog( LogLevel.Info | LogLevel.IsFiltered, tags, b.ToString(), null );
                 }
-                if( removedCount > 0 )
+                // The list keeps the eventually optional (removed) packages: their resources are
+                // the ResCoreData.ExcludedOptionalResourcePaths.
+                if( removedCount == 0 )
                 {
-                    if( removedCount == totalCount )
+                    l.Clear();
+                }
+                else if( removedCount < totalCount )
+                {
+                    for( int i = 0; i < l.Count; i++ )
                     {
-                        l.Clear();
-                    }
-                    else
-                    {
-                        for( int i = 0; i < l.Count; i++ )
+                        if( !l[i].IsOptional )
                         {
-                            if( !l[i].IsOptional )
-                            {
-                                l.RemoveAt( i-- );
-                            }
+                            l.RemoveAt( i-- );
                         }
                     }
                 }
