@@ -229,6 +229,15 @@ sealed partial class CoreCollector : IResPackageDescriptorRegistrar
             --_typedPackageCount;
             _packageIndex.Remove( p.Type );
         }
+        var mappings = p.SingleMappings;
+        if( mappings != null )
+        {
+            foreach( var m in mappings )
+            {
+                _packageIndex.Remove( m );
+            }
+            _packageDescriptorContext.OnSingleMappingsRemoved( mappings.Count );
+        }
     }
 
     bool SetNoMoreOptionalPackage( IActivityMonitor monitor, ResPackageDescriptor p )

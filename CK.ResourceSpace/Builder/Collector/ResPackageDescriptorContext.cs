@@ -82,6 +82,13 @@ sealed class ResPackageDescriptorContext
         return true;
     }
 
+    // Called when a definitely optional package is removed: its mappings are removed from the package index.
+    internal void OnSingleMappingsRemoved( int count )
+    {
+        Throw.DebugAssert( count > 0 && count <= _singleMappingCount );
+        _singleMappingCount -= count;
+    }
+
     public void RegisterCodeHandledResources( ResourceLocator resource )
     {
         _codeHandledResources.Add( resource );

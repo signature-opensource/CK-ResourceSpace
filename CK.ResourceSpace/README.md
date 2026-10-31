@@ -103,6 +103,26 @@ groups may contain the same item, several *packages* may not. Independent is the
 cyclic message above comes from a fixture where two groups sharing an item are also related by a
 `Requires`, and that is refused.
 
+## Optional packages are kept only when a required one reaches them.
+
+`RegisterPackage( monitor, type )` reads the relations from the type's attributes: the `[Package]`,
+`[Requires]`, `[RequiredBy]`, `[Children]` and `[Groups]` attributes (name based and generic), their
+`[Optional...]` variants, and any attribute that implements `IResourceGroupTopologyAttribute`
+(see [CK.ResourceSpace.Abstractions](https://github.com/signature-opensource/CK-Abstractions/blob/stable/CK.ResourceSpace.Abstractions/README.md)).
+
+A package registered with `isOptional: true` (or, by default, decorated with an `IOptionalResourceGroupAttribute`
+whose `IsOptional` is true) is dropped by the sort unless a required package reaches it. Reaching is **forward
+only**: a kept package keeps the targets of its required references (its package, `Requires`, `RequiredBy`,
+`Children`, `Groups`) and of its `ICachedType.AlsoRegisterTypes`. A package that declares a `RequiredBy` or a
+`Groups` to a kept package is not kept because of it, and an `[Optional...]` reference never keeps anything.
+A required reference to an unregistered package fails, unless a `ResSpaceConfiguration.PackageResolver` registers it.
+
+[`ResPackageClosure.Compute`](Builder/ResPackageClosure.cs) computes this set from the types' attributes alone,
+before any descriptor exists: given the candidate types, the roots (the ones that will be registered as required)
+and the single mappings the descriptors will have, it returns the typed packages the space will keep, or null
+when a required reference is not a candidate. A relation added to a descriptor by code (`ResPackageDescriptor.Requires`
+is mutable) is not seen by it: to be known in advance, a relation must be declared by an attribute.
+
 ## Handlers project, installers write, and that is the whole contract.
 
 A handler is registered on the `ResSpaceBuilder` and initialized by `Build()` once the packages are
@@ -190,8 +210,10 @@ so a specialized handler that forgets to implement it compiles and then has no L
 
 ## Requires.
 
-- [CK.EmbeddedResources](https://github.com/signature-opensource/CK-EmbeddedResources/blob/stable/CK.EmbeddedResources/README.md) for `IResourceContainer` and the `[EmbeddedResourceType]` /
-  `IResourcePackage` / `[Requires<>]` / `[Package<>]` / `[Children<>]` declarations that
-  `RegisterPackage( monitor, type )` reads.
+- [CK.EmbeddedResources](https://github.com/signature-opensource/CK-EmbeddedResources/blob/stable/CK.EmbeddedResources/README.md) for `IResourceContainer` and the `[EmbeddedResourceType]`
+  declaration that `RegisterPackage( monitor, type )` reads.
+- [CK.ResourceSpace.Abstractions](https://github.com/signature-opensource/CK-Abstractions/blob/stable/CK.ResourceSpace.Abstractions/README.md)
+  for `IResourcePackage` and the topology declarations (`[Requires<>]`, `[Package<>]`, `[Children<>]`...,
+  `IResourceGroupTopologyAttribute`).
 - `CK.Engine.TypeCollector` for `GlobalTypeCache` and `ICachedType`.
 - [CK.BinarySerialization.Sliced](https://github.com/signature-opensource/CK-BinarySerialization/blob/stable/CK.BinarySerialization.Sliced/README.md) for the Live state and the serialization of `ResCoreData`.
