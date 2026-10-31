@@ -5,10 +5,10 @@
     <LangVersion>13</LangVersion>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="CK.BinarySerialization.Sliced" Version="16.0.0-0.cris-auth.0.ci.13" />
+    <PackageReference Include="CK.BinarySerialization.Sliced" Version="16.0.0-0.cris-auth.0.ci.14" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="CK.EmbeddedResources" Version="5.0.0-0.cris-auth" />
-    <PackageReference Include="CK.Engine.TypeCollector" Version="36.0.0-0.cris-auth.0.ci.15" />
+    <PackageReference Include="CK.Engine.TypeCollector" Version="36.0.0-0.cris-auth.0.ci.17" />
   </ItemGroup>
 </Project>
