@@ -39,10 +39,10 @@ body has no failure path - it always returns a collector wrapping the *same* `Co
 instance. Registrations are closed later, by `ResSpaceDataBuilder.Build`. So the null check on that
 first call is defensive, not a real branch.
 
-The generated code container is the reason for the last two being separate. It can be assigned, once,
-on any of these four objects and on the `ResSpaceData` between the last two,
-`ResSpaceBuilder.GeneratedCodeContainer` being the last chance, so that a code
-generator can produce its code *from* the topologically ordered packages it has just been given.
+The generated code container is the reason for the last two being separate. It can be assigned
+only once, on any of these four objects or on the `ResSpaceData` that sits between the last two.
+`ResSpaceBuilder.GeneratedCodeContainer` is the last chance to assign it: a code generator can then
+produce its code *from* the topologically ordered packages it has just been given.
 
 ## Every space has a head and a tail you never register.
 
@@ -146,7 +146,7 @@ follows these rules.
 - **A not mapped package** (`INotMappedAttribute`) is not an implementation of its abstractions: only its own type
   can reach it. Registered as optional, it is kept only if something references its type.
 
-A plugin requires its host, so the host must not reference its plugins' abstraction: a later package can. A plugin
+A plugin requires its host, so the host must not reference its plugins' abstraction; a package that comes after the plugins can. A plugin
 that requires a host referencing its multiple abstraction (by `Children` or `Requires`) is a cycle as soon as both
 are kept; this is an error at registration time, whatever the selection:
 

@@ -110,7 +110,7 @@ public partial class LocalesResourceHandler : ResourceSpaceFolderHandler
                                           .Select( kv => $"""
                                       '{kv.Key}' is defined in {kv.Value.Origin} with text '{kv.Value.Text}'.
                                       But is also defined in:
-                                      {kv.Value.Ambiguities!.Select( r => $"{r.Origin.ToString()} with text '{r.Text}'." ).Concatenate( Environment.NewLine )}.
+                                      {kv.Value.Ambiguities!.Select( r => $"{r.Origin.ToString()} with text '{r.Text}'." ).Concatenate( Environment.NewLine )}
                                       """ );
 
                 monitor.Error( $"""

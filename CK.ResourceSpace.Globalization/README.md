@@ -85,14 +85,16 @@ position in the space.
 ## An ambiguity is an initialization failure, and it names both texts.
 
 `Initialize` computes the final set and returns false when it is ambiguous, which makes
-`ResSpaceBuilder.Build()` return null. The error names the key, the origin and the text on each side:
+`ResSpaceBuilder.Build()` return null. The error names, per key, the origin and the text of the first definition and of every rival:
 
 ```
 Ambiguities detected in final translations:
+'<key>' is defined in <origin> with text '<text>'.
+But is also defined in:
+<other origin> with text '<other text>'.
 ```
 
-followed, per key, by the origin and text of the winner and of every rival - so the message alone is
-enough to find both files.
+The message alone is therefore enough to find both files.
 
 So `FinalTranslations`, once non-null, is unambiguous, and `Install` asserts that rather than
 re-checking. As with any folder handler, a null `Installer` is only reported - `No installer
@@ -102,9 +104,8 @@ associated to '...'. Skipped.` - which is how the Live side reuses the merge wit
 
 The primary live state holds the target path, the active culture names, the root folder name and the
 `InstallOption`. The already-computed final sets of the stable packages are too big for it, so they go
-to `<LiveStatePath>/Folder/<root folder name>.dat` - `.ck-watch/` being only the default LiveStatePath -
-and are loaded lazily, on the first change that actually
-matters. That is what lets the Live process avoid re-reading resources from assemblies it would
+to `<LiveStatePath>/Folder/<root folder name>.dat` (`LiveStatePath` defaults to `.ck-watch/`) and are
+loaded lazily, on the first change that actually matters. That is what lets the Live process avoid re-reading resources from assemblies it would
 otherwise have to load.
 
 `OnChange` claims every path under the root folder - returning true even for a file it ignores, since
