@@ -28,6 +28,10 @@ using Ref = ResPackageDescriptor.Ref;
 ///     otherwise the only candidate that implements it.
 ///     </item>
 ///     <item>A required reference that cannot be resolved among the candidates is an error.</item>
+///     <item>
+///     A reference to a type that is not compatible (see <see cref="IResPackageDescriptorResolver.IsCompatible(ICachedType)"/>)
+///     is ignored, and a candidate that is not compatible is an error.
+///     </item>
 /// </list>
 /// </para>
 /// </summary>
@@ -40,21 +44,32 @@ public static class ResPackageClosure
     /// <param name="typeCache">The type cache.</param>
     /// <param name="candidates">The candidate typed packages.</param>
     /// <param name="isRoot">Whether a candidate is a root (registered as required).</param>
+    /// <param name="isCompatible">
+    /// The type compatibility rule of the space (see <see cref="IResPackageDescriptorResolver.IsCompatible(ICachedType)"/>).
+    /// Defaults to every type being compatible.
+    /// </param>
     /// <returns>The kept packages or null on error.</returns>
     public static HashSet<ICachedType>? Compute( IActivityMonitor monitor,
                                                  GlobalTypeCache typeCache,
                                                  IEnumerable<ICachedType> candidates,
-                                                 Func<ICachedType, bool> isRoot )
+                                                 Func<ICachedType, bool> isRoot,
+                                                 Func<ICachedType, bool>? isCompatible = null )
     {
         Throw.CheckNotNullArgument( monitor );
         Throw.CheckNotNullArgument( typeCache );
         Throw.CheckNotNullArgument( candidates );
         Throw.CheckNotNullArgument( isRoot );
 
-        var state = new State( monitor, typeCache );
+        var state = new State( monitor, typeCache, isCompatible );
         var resourceGroup = typeof( IResourceGroup );
         foreach( var c in candidates )
         {
+            if( !state.IsCompatible( c ) )
+            {
+                monitor.Error( $"Candidate package '{c.CSharpName}' is not compatible with this space (see IResPackageDescriptorResolver.IsCompatible)." );
+                state.Success = false;
+                continue;
+            }
             if( !c.TryGetMapping( monitor, out var mapping ) )
             {
                 state.Success = false;
@@ -124,6 +139,7 @@ public static class ResPackageClosure
     {
         readonly IActivityMonitor _monitor;
         readonly GlobalTypeCache _typeCache;
+        readonly Func<ICachedType, bool>? _isCompatible;
         public readonly Dictionary<object, ICachedType> Index = new();
         public readonly HashSet<ICachedType> Roots = new();
         public readonly Dictionary<ICachedType, List<ICachedType>> SingleImplementations = new();
@@ -132,16 +148,21 @@ public static class ResPackageClosure
         public ICachedType? Current;
         public bool Success = true;
 
-        public State( IActivityMonitor monitor, GlobalTypeCache typeCache )
+        public State( IActivityMonitor monitor, GlobalTypeCache typeCache, Func<ICachedType, bool>? isCompatible )
         {
             _monitor = monitor;
             _typeCache = typeCache;
+            _isCompatible = isCompatible;
         }
+
+        public bool IsCompatible( ICachedType type ) => _isCompatible == null || _isCompatible( type );
 
         public void Follow( string relName, Ref r )
         {
             Throw.DebugAssert( r.IsValid && !r.IsOptional && Current != null );
             object key = r._ref is Type t ? _typeCache.Get( t ) : r._ref;
+            // A reference to an incompatible type concerns another space: it is ignored.
+            if( key is ICachedType referenced && !IsCompatible( referenced ) ) return;
             if( !Index.TryGetValue( key, out var target ) )
             {
                 if( key is ICachedType abstraction

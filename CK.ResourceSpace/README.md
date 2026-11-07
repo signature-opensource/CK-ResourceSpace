@@ -156,6 +156,26 @@ are kept; this is an error at registration time, whatever the selection:
 
 A longer cycle that goes through an expanded relationship names the abstraction: `'Gatherer' requires 'CyclingPlugin' (through 'ICyclingPlugin')`.
 
+## A space has a scope: what exists, and what concerns it.
+
+Several spaces can be built from the same types, each one for its own aspect (TypeScript packages, locale packages...),
+and a type's relations may point to the types of another space. Two independent settings say how a space sees them:
+
+- **The allowed types: what exists.** The `allowedTypes` of `ResSpaceConfiguration( typeCache, allowedTypes )`. A type
+  that is not allowed doesn't exist for the space: registering it is an error, and so is a required reference to it
+  (`The Requires reference to '...' cannot be resolved: this type is not allowed in this space.`), that no
+  `PackageResolver` is asked to resolve. An optional reference to it is ignored.
+- **The compatibility rule: what concerns the space.** [`IResPackageDescriptorResolver.IsCompatible`](Builder/ITypedResPackageResolver.cs)
+  (true by default). A reference to an incompatible type (Package, Requires, RequiredBy, Children, Groups or an
+  `AlsoRegisterTypes`), optional or not, allowed or not, is silently ignored: it concerns another space. Registering an
+  incompatible type is an error. An abstraction is expanded to its registered implementations, that are compatible by
+  construction. Name based references have no type: the rule doesn't apply to them.
+
+`ResPackageClosure.Compute` takes the same rule (its `isCompatible` parameter) and stays the exact closure of the space.
+
+The price of the scope: a path through an ignored type is lost. If `A` requires `S` that requires `B`, and `S` is out of
+the space's scope, the space doesn't order `A` after `B`: within a space, a constraint must be stated within its scope.
+
 ## Handlers project, installers write, and that is the whole contract.
 
 A handler is registered on the `ResSpaceBuilder` and initialized by `Build()` once the packages are

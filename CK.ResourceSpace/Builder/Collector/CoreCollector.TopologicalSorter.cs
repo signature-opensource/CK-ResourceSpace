@@ -199,8 +199,16 @@ sealed partial class CoreCollector
                 var p = packages[i];
                 if( p.Package.IsValid )
                 {
-                    p.Package = InitialResolveRef( "Package", p.Package );
-                    success &= p.Package.IsValid;
+                    if( _collector.IsOutOfScope( p.Package ) )
+                    {
+                        // The package of the package concerns another space.
+                        p.Package = default;
+                    }
+                    else
+                    {
+                        p.Package = InitialResolveRef( "Package", p.Package );
+                        success &= p.Package.IsValid;
+                    }
                 }
                 success &= InitialResolveReferences( "Requires", p._requires, autoRemove: p );
                 success &= InitialResolveReferences( "RequiredBy", p._requiredBy, autoRemove: p );
@@ -221,7 +229,8 @@ sealed partial class CoreCollector
                 // been added to the list.
                 if( r.IsValid )
                 {
-                    if( autoRemove != null && r.FullName == autoRemove.FullName )
+                    // A reference to an incompatible type concerns another space: it is ignored.
+                    if( (autoRemove != null && r.FullName == autoRemove.FullName) || _collector.IsOutOfScope( r ) )
                     {
                         list.RemoveAt( i-- );
                     }
@@ -391,6 +400,12 @@ sealed partial class CoreCollector
                 return r;
             }
             // The package is unknown but this is a required reference.
+            // A type that is not allowed doesn't exist for this space: no resolver can register it.
+            if( r._ref is ICachedType notRegistered && !_collector.IsAllowed( notRegistered ) )
+            {
+                _monitor.Error( $"The {relName} reference to '{notRegistered.CSharpName}' cannot be resolved: this type is not allowed in this space." );
+                return Ref.Invalid;
+            }
             // => Time for the package resolver to kick in (if it exists).
             return InitialResolveWithResolvers( r );
         }

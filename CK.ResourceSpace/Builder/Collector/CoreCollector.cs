@@ -31,6 +31,27 @@ sealed partial class CoreCollector : IResPackageDescriptorRegistrar
     internal IResPackageDescriptorResolver? _packageResolver;
     internal bool _revertOrderingNames;
 
+    // The type compatibility rule (the scope of the space): see IResPackageDescriptorResolver.IsCompatible.
+    internal bool IsCompatible( ICachedType type ) => _packageResolver == null || _packageResolver.IsCompatible( type );
+
+    // The allowed types: the other ones don't exist for this space.
+    internal bool IsAllowed( ICachedType type ) => _allowedTypes == null || _allowedTypes( type );
+
+    // Gets the type of a type based reference, null for a name or a package descriptor.
+    internal ICachedType? GetReferencedType( ResPackageDescriptor.Ref r ) => r._ref switch
+    {
+        Type t => _typeCache.Get( t ),
+        ICachedType c => c,
+        _ => null
+    };
+
+    // True when the reference is type based and its type is out of the scope of this space.
+    internal bool IsOutOfScope( ResPackageDescriptor.Ref r )
+    {
+        var t = GetReferencedType( r );
+        return t != null && !IsCompatible( t );
+    }
+
     int _localPackageCount;
     int _typedPackageCount;
     // Set when a RegisterPackage fails: the registrations are incomplete.
@@ -311,6 +332,12 @@ sealed partial class CoreCollector : IResPackageDescriptorRegistrar
         }
         else
         {
+            // The resolver (that is the compatibility rule) can be set after the registrations:
+            // the registered types are checked here.
+            success = CheckRegisteredTypesAreCompatible( monitor );
+        }
+        if( success )
+        {
             // First, we must handle the AlsoRegisterTypes of non optional packages
             // that are not already regsitered.
             // We do this here (in the Close) to let regular registrations "win" over registrations from
@@ -335,6 +362,20 @@ sealed partial class CoreCollector : IResPackageDescriptorRegistrar
         return success;
     }
 
+    bool CheckRegisteredTypesAreCompatible( IActivityMonitor monitor )
+    {
+        bool success = true;
+        foreach( var p in _packages.Concat( _optionalPackages ) )
+        {
+            if( p.Type != null && !IsCompatible( p.Type ) )
+            {
+                monitor.Error( $"Type '{p.Type.CSharpName}' is registered but it is not compatible with this space (see IResPackageDescriptorResolver.IsCompatible)." );
+                success = false;
+            }
+        }
+        return success;
+    }
+
     // A package that implements a multiple abstraction (a plugin) and requires a package (its host) that references this
     // abstraction by its Children or Requires is a cycle as soon as both are kept: this is detected here, regardless of
     // the selection (optional packages included).
@@ -350,6 +391,8 @@ sealed partial class CoreCollector : IResPackageDescriptorRegistrar
                 if( host == null || host == p ) continue;
                 foreach( var key in p._multipleKeys )
                 {
+                    // A reference to an incompatible abstraction is ignored by the sort: it cannot be a cycle.
+                    if( !IsCompatible( key ) ) continue;
                     var rel = References( host._children, key )
                                 ? "Children"
                                 : References( host._requires, key )
@@ -399,6 +442,8 @@ sealed partial class CoreCollector : IResPackageDescriptorRegistrar
         {
             foreach( var also in p.Type.AlsoRegisterTypes )
             {
+                // An incompatible type concerns another space.
+                if( !IsCompatible( also ) ) continue;
                 if( _packageIndex.TryGetValue( also, out var already ) )
                 {
                     // If the also registered package is optional, it is no more optional.
