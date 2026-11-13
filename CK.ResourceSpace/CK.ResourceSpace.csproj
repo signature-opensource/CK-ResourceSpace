@@ -5,7 +5,7 @@
     <LangVersion>13</LangVersion>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="CK.BinarySerialization.Sliced" Version="16.0.0-0.cris-auth.1.ci.36" />
+    <PackageReference Include="CK.BinarySerialization.Sliced" Version="16.0.0-0.cris-auth.1.ci.38" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="CK.EmbeddedResources" Version="5.0.0-0.cris-auth.0.ci.12" />
