@@ -7,9 +7,13 @@
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="Tests/CK.EmbeddedResources.Globalization.Tests/CK.EmbeddedResources.Globalization.Tests.csproj" />
+    <Project Path="Tests/CK.Engine.Configuration.Tests/CK.Engine.Configuration.Tests.csproj" />
+    <Project Path="Tests/CK.Engine.TypeCollector.Tests/CK.Engine.TypeCollector.Tests.csproj" />
     <Project Path="Tests/CK.ResourceSpace.Tests/CK.ResourceSpace.Tests.csproj" />
   </Folder>
   <Project Path="CK.EmbeddedResources.Globalization/CK.EmbeddedResources.Globalization.csproj" />
+  <Project Path="CK.Engine.Configuration/CK.Engine.Configuration.csproj" />
+  <Project Path="CK.Engine.TypeCollector/CK.Engine.TypeCollector.csproj" />
   <Project Path="CK.ResourceSpace.Assets/CK.ResourceSpace.Assets.csproj" />
   <Project Path="CK.ResourceSpace.Globalization/CK.ResourceSpace.Globalization.csproj" />
   <Project Path="CK.ResourceSpace/CK.ResourceSpace.csproj" />
