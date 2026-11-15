@@ -26,6 +26,32 @@ public class ResPackageClosureScopeTests
 
     static readonly Type[] _candidates = [typeof( NgBuild ), typeof( ViteBuild ), typeof( Hosting )];
 
+    [SingleScope]
+    public interface IEndpoint : IResourceGroup { }
+
+    public sealed class Endpoint1 : IEndpoint { }
+
+    public sealed class Endpoint2 : IEndpoint { }
+
+    [Test]
+    public void the_caller_decides_which_single_abstractions_are_unique()
+    {
+        var cache = new GlobalTypeCache();
+        Type[] candidates = [.. _candidates, typeof( Endpoint1 ), typeof( Endpoint2 )];
+        using( TestHelper.Monitor.CollectTexts( out var texts ) )
+        {
+            // IBuild is not unique here (one per client), IEndpoint is.
+            ResPackageClosure.Compute( TestHelper.Monitor,
+                                       cache,
+                                       candidates.Select( cache.Get ),
+                                       _ => true,
+                                       isUnique: a => a.Type != typeof( IBuild ) )
+                             .ShouldBeNull();
+            texts.ShouldContain( t => t.Contains( "IEndpoint' is a single abstraction but more than one kept package implement it" ) );
+            texts.ShouldNotContain( t => t.Contains( "IBuild" ) );
+        }
+    }
+
     [Test]
     public void in_one_scope_a_single_abstraction_has_at_most_one_implementation()
     {
@@ -49,7 +75,7 @@ public class ResPackageClosureScopeTests
                                                  cache,
                                                  _candidates.Select( cache.Get ),
                                                  t => t.Type == typeof( Hosting ) || t.Type == typeof( NgBuild ) || t.Type == typeof( ViteBuild ),
-                                                 checkSingleUniqueness: false )
+                                                 isUnique: _ => false )
                                         .ShouldNotBeNull();
         closure.Select( t => t.Type.Name ).Order().ShouldBe( ["Hosting", "NgBuild", "ViteBuild"] );
 
@@ -58,7 +84,7 @@ public class ResPackageClosureScopeTests
                                    cache,
                                    new[] { typeof( NgBuild ), typeof( Hosting ) }.Select( cache.Get ),
                                    t => t.Type == typeof( Hosting ),
-                                   checkSingleUniqueness: false )
+                                   isUnique: _ => false )
                          .ShouldNotBeNull()
                          .Select( t => t.Type.Name ).Order().ShouldBe( ["Hosting", "NgBuild"] );
     }

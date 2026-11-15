@@ -25,8 +25,12 @@ using Ref = ResPackageDescriptor.Ref;
 ///     <item>A reference to a multiple abstraction never keeps a package.</item>
 ///     <item>
 ///     A required reference to a single abstraction keeps its implementation: the only root candidate that implements it,
-///     otherwise the only candidate that implements it (when the closure covers several scopes, see the checkSingleUniqueness
-///     parameter of <see cref="Compute"/>, all its root implementations).
+///     otherwise the only candidate that implements it. When the caller says that the abstraction is not unique in this
+///     closure (the isUnique predicate of <see cref="Compute"/>), all its root implementations are kept.
+///     </item>
+///     <item>
+///     A single abstraction has at most one kept implementation, unless the caller says it is not unique in this closure:
+///     the scopes in which an abstraction is unique are known by the code that uses the closure, not by the type model.
 ///     </item>
 ///     <item>A required reference that cannot be resolved among the candidates is an error.</item>
 ///     <item>
@@ -49,11 +53,12 @@ public static class ResPackageClosure
     /// The type compatibility rule of the space (see <see cref="IResPackageDescriptorResolver.IsCompatible(ICachedType)"/>).
     /// Defaults to every type being compatible.
     /// </param>
-    /// <param name="checkSingleUniqueness">
-    /// False when the closure covers several scopes in which the single abstractions are unique (the set of a party
-    /// contains the sets of its clients, and each client can have its implementation): a required reference to a single
-    /// abstraction keeps all its root implementations (when there is none, the only candidate that implements it) and
-    /// the kept packages may contain more than one implementation of it. The uniqueness is then checked in each scope.
+    /// <param name="isUnique">
+    /// Whether a single abstraction is unique in this closure. When false (the closure covers several scopes in which it
+    /// is unique: each client of a party can have its implementation), a required reference to it keeps all its root
+    /// implementations (when there is none, the only candidate that implements it) and the kept packages may contain more
+    /// than one implementation of it: its uniqueness is checked by the caller, in each of its scopes.
+    /// Defaults to every single abstraction being unique.
     /// </param>
     /// <returns>The kept packages or null on error.</returns>
     public static HashSet<ICachedType>? Compute( IActivityMonitor monitor,
@@ -61,14 +66,14 @@ public static class ResPackageClosure
                                                  IEnumerable<ICachedType> candidates,
                                                  Func<ICachedType, bool> isRoot,
                                                  Func<ICachedType, bool>? isCompatible = null,
-                                                 bool checkSingleUniqueness = true )
+                                                 Func<ICachedType, bool>? isUnique = null )
     {
         Throw.CheckNotNullArgument( monitor );
         Throw.CheckNotNullArgument( typeCache );
         Throw.CheckNotNullArgument( candidates );
         Throw.CheckNotNullArgument( isRoot );
 
-        var state = new State( monitor, typeCache, isCompatible, checkSingleUniqueness );
+        var state = new State( monitor, typeCache, isCompatible, isUnique );
         var resourceGroup = typeof( IResourceGroup );
         foreach( var c in candidates )
         {
@@ -131,10 +136,10 @@ public static class ResPackageClosure
                 state.Follow( "AlsoRegisterType", new Ref( also ) );
             }
         }
-        // A single abstraction cannot have more than one kept implementation (in the scope of the closure).
-        foreach( var (key, implementations) in checkSingleUniqueness ? state.SingleImplementations : new Dictionary<ICachedType, List<ICachedType>>() )
+        // A single abstraction that is unique in this closure cannot have more than one kept implementation.
+        foreach( var (key, implementations) in state.SingleImplementations )
         {
-            if( implementations.Count( state.Result.Contains ) > 1 )
+            if( state.IsUnique( key ) && implementations.Count( state.Result.Contains ) > 1 )
             {
                 monitor.Error( $"'{key.CSharpName}' is a single abstraction but more than one kept package implement it: '{implementations.Where( state.Result.Contains ).Select( i => i.CSharpName ).Order().Concatenate( "', '" )}'." );
                 state.Success = false;
@@ -148,7 +153,7 @@ public static class ResPackageClosure
         readonly IActivityMonitor _monitor;
         readonly GlobalTypeCache _typeCache;
         readonly Func<ICachedType, bool>? _isCompatible;
-        readonly bool _checkSingleUniqueness;
+        readonly Func<ICachedType, bool>? _isUnique;
         public readonly Dictionary<object, ICachedType> Index = new();
         public readonly HashSet<ICachedType> Roots = new();
         public readonly Dictionary<ICachedType, List<ICachedType>> SingleImplementations = new();
@@ -157,15 +162,17 @@ public static class ResPackageClosure
         public ICachedType? Current;
         public bool Success = true;
 
-        public State( IActivityMonitor monitor, GlobalTypeCache typeCache, Func<ICachedType, bool>? isCompatible, bool checkSingleUniqueness )
+        public State( IActivityMonitor monitor, GlobalTypeCache typeCache, Func<ICachedType, bool>? isCompatible, Func<ICachedType, bool>? isUnique )
         {
             _monitor = monitor;
             _typeCache = typeCache;
             _isCompatible = isCompatible;
-            _checkSingleUniqueness = checkSingleUniqueness;
+            _isUnique = isUnique;
         }
 
         public bool IsCompatible( ICachedType type ) => _isCompatible == null || _isCompatible( type );
+
+        public bool IsUnique( ICachedType abstraction ) => _isUnique == null || _isUnique( abstraction );
 
         public void Follow( string relName, Ref r )
         {
@@ -190,7 +197,7 @@ public static class ResPackageClosure
                         // A reference to a multiple abstraction never keeps a package.
                         return;
                     }
-                    if( !_checkSingleUniqueness )
+                    if( !IsUnique( abstraction ) )
                     {
                         // Several scopes: all the root implementations are kept.
                         SingleImplementations.TryGetValue( abstraction, out var all );
