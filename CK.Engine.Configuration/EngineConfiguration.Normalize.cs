@@ -538,6 +538,46 @@ public sealed partial class EngineConfiguration
                             success = false;
                         }
                     }
+                    foreach( var f in s.Features.Concat( s.ExcludedFeatures ) )
+                    {
+                        if( !TypeSetConfiguration.IsValidFeatureName( f ) )
+                        {
+                            monitor.Error( $"{s} of BinPath '{b.Name}': '{f}' is not a valid feature name (letters, digits and dots, starting with a letter)." );
+                            success = false;
+                        }
+                    }
+                    foreach( var f in s.Features )
+                    {
+                        if( s.ExcludedFeatures.Contains( f ) )
+                        {
+                            monitor.Error( $"{s} of BinPath '{b.Name}' both adds and excludes the feature '{f}'." );
+                            success = false;
+                        }
+                    }
+                }
+                // The parents: no cycle, and a set can't add what one of its ancestors excludes.
+                foreach( var s in b.TypeSets )
+                {
+                    var visited = new HashSet<TypeSetConfiguration> { s };
+                    for( var p = s.Parent != null ? b.FindTypeSet( s.Parent ) : null; p != null; p = p.Parent != null ? b.FindTypeSet( p.Parent ) : null )
+                    {
+                        if( !visited.Add( p ) )
+                        {
+                            monitor.Error( $"The parents of {s} of BinPath '{b.Name}' form a cycle." );
+                            success = false;
+                            break;
+                        }
+                        foreach( var t in s.Types.Where( p.ExcludedTypes.Contains ) )
+                        {
+                            monitor.Error( $"{s} of BinPath '{b.Name}' adds the type '{t:N}' that its ancestor {p} excludes: the exclusions apply downward." );
+                            success = false;
+                        }
+                        foreach( var f in s.Features.Where( p.ExcludedFeatures.Contains ) )
+                        {
+                            monitor.Error( $"{s} of BinPath '{b.Name}' adds the feature '{f}' that its ancestor {p} excludes: the exclusions apply downward." );
+                            success = false;
+                        }
+                    }
                 }
             }
 

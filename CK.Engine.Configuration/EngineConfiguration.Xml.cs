@@ -163,6 +163,21 @@ public sealed partial class EngineConfiguration
     static public readonly XName xTypeSet = XNamespace.None + "TypeSet";
 
     /// <summary>
+    /// The Features element name.
+    /// </summary>
+    static public readonly XName xFeatures = XNamespace.None + "Features";
+
+    /// <summary>
+    /// The ExcludedFeatures element name.
+    /// </summary>
+    static public readonly XName xExcludedFeatures = XNamespace.None + "ExcludedFeatures";
+
+    /// <summary>
+    /// The Feature element name.
+    /// </summary>
+    static public readonly XName xFeature = XNamespace.None + "Feature";
+
+    /// <summary>
     /// The Parent attribute name.
     /// </summary>
     static public readonly XName xParent = XNamespace.None + "Parent";

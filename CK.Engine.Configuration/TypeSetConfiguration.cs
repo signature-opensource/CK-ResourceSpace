@@ -7,12 +7,20 @@ using System.Xml.Linq;
 namespace CK.Setup;
 
 /// <summary>
-/// A named set of types of a BinPath: a subset of the types of the BinPath (see <see cref="BinPathConfiguration.TypeSets"/>).
-/// A set holds membership only (no service kind: the kinds are a setting of the BinPath's own types):
+/// A named set of types of a BinPath, computed inside its parent (the <see cref="Parent"/> set, or the BinPath): see
+/// <see cref="BinPathConfiguration.TypeSets"/>. A set holds membership only (no service kind: the kinds are a setting of
+/// the BinPath's own types).
 /// <list type="bullet">
-///   <item>its members are the types of the BinPath minus its <see cref="ExcludedTypes"/>;</item>
-///   <item>its <see cref="Types"/> are added to the types of the BinPath (the inclusion propagates upward);</item>
-///   <item>the <c>[AlsoRegisterType]</c> of its members are members.</item>
+///   <item>
+///   Its packages (the concrete <c>IResourceGroup</c>) are the closure of its roots (their required relations) among the
+///   packages of its parent minus its <see cref="ExcludedTypes"/> and <see cref="ExcludedFeatures"/>. The roots are the
+///   packages of its <see cref="Types"/> and <see cref="Features"/>; with none, the non optional packages of its parent.
+///   </item>
+///   <item>Its other types are the ones of its parent minus its <see cref="ExcludedTypes"/>.</item>
+///   <item>The <c>[AlsoRegisterType]</c> of its members are members.</item>
+///   <item>
+///   Its <see cref="Types"/> and its roots propagate upward: they are types of the BinPath and roots of its parent.
+///   </item>
 /// </list>
 /// A local party, a client of a party: each one has its set (the structure of an application is compile time).
 /// </summary>
@@ -21,6 +29,8 @@ public sealed class TypeSetConfiguration
     readonly string _name;
     readonly HashSet<Type> _types;
     readonly HashSet<Type> _excludedTypes;
+    readonly HashSet<string> _features;
+    readonly HashSet<string> _excludedFeatures;
 
     /// <summary>
     /// Initializes a new empty set.
@@ -32,6 +42,8 @@ public sealed class TypeSetConfiguration
         _name = name;
         _types = new HashSet<Type>();
         _excludedTypes = new HashSet<Type>();
+        _features = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
+        _excludedFeatures = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
     }
 
     internal TypeSetConfiguration( XElement e )
@@ -40,6 +52,10 @@ public sealed class TypeSetConfiguration
         Parent = (string?)e.Attribute( EngineConfiguration.xParent );
         _types = new HashSet<Type>( EngineConfiguration.TypesFromXml( e, EngineConfiguration.xTypes, EngineConfiguration.xType ) );
         _excludedTypes = new HashSet<Type>( EngineConfiguration.TypesFromXml( e, EngineConfiguration.xExcludedTypes, EngineConfiguration.xType ) );
+        _features = new HashSet<string>( EngineConfiguration.StringsFromXml( e, EngineConfiguration.xFeatures, EngineConfiguration.xFeature ),
+                                         StringComparer.OrdinalIgnoreCase );
+        _excludedFeatures = new HashSet<string>( EngineConfiguration.StringsFromXml( e, EngineConfiguration.xExcludedFeatures, EngineConfiguration.xFeature ),
+                                                 StringComparer.OrdinalIgnoreCase );
     }
 
     /// <summary>
@@ -54,15 +70,26 @@ public sealed class TypeSetConfiguration
     public string? Parent { get; set; }
 
     /// <summary>
-    /// Gets the types that this set adds: they are members of this set and of the BinPath. They are also the roots of the set:
-    /// the closure of a set that has roots is computed from them (see the engines that use the sets).
+    /// Gets the types that this set adds: they are members of this set and of the BinPath. Its packages are roots of
+    /// the set.
     /// </summary>
     public HashSet<Type> Types => _types;
 
     /// <summary>
-    /// Gets the types of the BinPath that are not members of this set.
+    /// Gets the types of the parent that are not members of this set.
     /// </summary>
     public HashSet<Type> ExcludedTypes => _excludedTypes;
+
+    /// <summary>
+    /// Gets the feature names (case insensitive) of the packages that are roots of this set: the names given by the
+    /// <c>INamedFeatureAttribute</c> of the packages. A name only activates its packages: it is never an alias of a type.
+    /// </summary>
+    public HashSet<string> Features => _features;
+
+    /// <summary>
+    /// Gets the feature names (case insensitive) of the packages of the parent that are not members of this set.
+    /// </summary>
+    public HashSet<string> ExcludedFeatures => _excludedFeatures;
 
     /// <summary>
     /// Creates a xml element from this set.
@@ -74,7 +101,9 @@ public sealed class TypeSetConfiguration
                              new XAttribute( EngineConfiguration.xName, _name ),
                              Parent != null ? new XAttribute( EngineConfiguration.xParent, Parent ) : null,
                              _types.Count > 0 ? EngineConfiguration.ToXml( EngineConfiguration.xTypes, EngineConfiguration.xType, _types ) : null,
-                             _excludedTypes.Count > 0 ? EngineConfiguration.ToXml( EngineConfiguration.xExcludedTypes, EngineConfiguration.xType, _excludedTypes ) : null );
+                             _excludedTypes.Count > 0 ? EngineConfiguration.ToXml( EngineConfiguration.xExcludedTypes, EngineConfiguration.xType, _excludedTypes ) : null,
+                             _features.Count > 0 ? EngineConfiguration.ToXml( EngineConfiguration.xFeatures, EngineConfiguration.xFeature, _features ) : null,
+                             _excludedFeatures.Count > 0 ? EngineConfiguration.ToXml( EngineConfiguration.xExcludedFeatures, EngineConfiguration.xFeature, _excludedFeatures ) : null );
     }
 
     /// <summary>
@@ -84,8 +113,10 @@ public sealed class TypeSetConfiguration
     /// <returns>True when they are equal.</returns>
     public bool SetEquals( TypeSetConfiguration other ) => _name == other._name
                                                            && Parent == other.Parent
-                                                             && _types.SetEquals( other._types )
-                                                             && _excludedTypes.SetEquals( other._excludedTypes );
+                                                           && _types.SetEquals( other._types )
+                                                           && _excludedTypes.SetEquals( other._excludedTypes )
+                                                           && _features.SetEquals( other._features )
+                                                           && _excludedFeatures.SetEquals( other._excludedFeatures );
 
     /// <summary>
     /// Gets a hash code of the name and the content of this set (see <see cref="SetEquals(TypeSetConfiguration)"/>).
@@ -96,7 +127,25 @@ public sealed class TypeSetConfiguration
         int h = HashCode.Combine( _name, Parent );
         foreach( var t in _types ) h ^= t.GetHashCode();
         foreach( var t in _excludedTypes ) h ^= ~t.GetHashCode();
+        foreach( var f in _features ) h ^= StringComparer.OrdinalIgnoreCase.GetHashCode( f );
+        foreach( var f in _excludedFeatures ) h ^= ~StringComparer.OrdinalIgnoreCase.GetHashCode( f );
         return h;
+    }
+
+    /// <summary>
+    /// Gets whether a string is a valid feature name: an identifier made of letters, digits and dots that starts with
+    /// a letter (and doesn't end with a dot).
+    /// </summary>
+    /// <param name="name">The name to check.</param>
+    /// <returns>True if it is valid.</returns>
+    public static bool IsValidFeatureName( string? name )
+    {
+        if( string.IsNullOrEmpty( name ) || !char.IsAsciiLetter( name[0] ) || name[^1] == '.' ) return false;
+        foreach( var c in name )
+        {
+            if( !char.IsAsciiLetterOrDigit( c ) && c != '.' ) return false;
+        }
+        return !name.Contains( ".." );
     }
 
     /// <summary>
