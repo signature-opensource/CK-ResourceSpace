@@ -38,7 +38,7 @@ public sealed partial class EngineConfiguration
     ///     </list>
     ///     </item>
     ///     <item>
-    ///     Removes types from <see cref="GlobalTypes"/> that appears in <see cref="GlobalExcludedTypes"/>.
+    ///     Removes types from <see cref="GlobalTypes"/> that are excluded by <see cref="GlobalExcludedTypes"/> (see <see cref="TypeExclusion"/>).
     ///     </item>
     ///     <item>
     ///     Checks that in <see cref="GlobalTypes"/>, a <see cref="ConfigurableAutoServiceKind"/> other than None is not used
@@ -78,7 +78,7 @@ public sealed partial class EngineConfiguration
     ///             the <see cref="GlobalTypes"/> to <see cref="BinPathConfiguration.Types"/>.
     ///             </item>
     ///             <item>
-    ///             Removes types from <see cref="BinPathConfiguration.Types"/> that appears in ExcludedTypes.
+    ///             Removes types from <see cref="BinPathConfiguration.Types"/> that are excluded by its ExcludedTypes (see <see cref="TypeExclusion"/>).
     ///             </item>
     ///             <item>
     ///             Checks that in <see cref="BinPathConfiguration.Types"/>, a <see cref="ConfigurableAutoServiceKind"/> other than None is not used
@@ -527,14 +527,14 @@ public sealed partial class EngineConfiguration
                     }
                     foreach( var t in s.Types )
                     {
-                        if( s.ExcludedTypes.Contains( t ) )
+                        if( s.ExcludedTypes.FindExcluder( t ) is Type self )
                         {
-                            monitor.Error( $"{s} of BinPath '{b.Name}' both adds and excludes the type '{t:N}'." );
+                            monitor.Error( $"{s} of BinPath '{b.Name}' both adds and excludes the type '{t:N}' (excluded by '{self:N}')." );
                             success = false;
                         }
-                        else if( b.ExcludedTypes.Contains( t ) )
+                        else if( b.ExcludedTypes.FindExcluder( t ) is Type binPath )
                         {
-                            monitor.Error( $"{s} of BinPath '{b.Name}' adds the type '{t:N}' that the BinPath excludes: the exclusions apply downward." );
+                            monitor.Error( $"{s} of BinPath '{b.Name}' adds the type '{t:N}' that the BinPath excludes (by '{binPath:N}'): the exclusions apply downward." );
                             success = false;
                         }
                     }
@@ -567,9 +567,9 @@ public sealed partial class EngineConfiguration
                             success = false;
                             break;
                         }
-                        foreach( var t in s.Types.Where( p.ExcludedTypes.Contains ) )
+                        foreach( var t in s.Types.Where( t => p.ExcludedTypes.FindExcluder( t ) != null ) )
                         {
-                            monitor.Error( $"{s} of BinPath '{b.Name}' adds the type '{t:N}' that its ancestor {p} excludes: the exclusions apply downward." );
+                            monitor.Error( $"{s} of BinPath '{b.Name}' adds the type '{t:N}' that its ancestor {p} excludes (by '{p.ExcludedTypes.FindExcluder( t ):N}'): the exclusions apply downward." );
                             success = false;
                         }
                         foreach( var f in s.Features.Where( p.ExcludedFeatures.Contains ) )
@@ -677,10 +677,11 @@ public sealed partial class EngineConfiguration
             string? source = null;
             foreach( var tc in types )
             {
-                if( excludedTypes.Contains( tc.Type ) )
+                var excluder = excludedTypes.FindExcluder( tc.Type );
+                if( excluder != null )
                 {
                     source ??= b != null ? $"BinPath '{b.Name}' Types" : "GlobalTypes";
-                    monitor.Warn( $"{source} contains '{tc.Type}' of kind '{tc.Kind}' that is excluded. It is removed and will be ignored." );
+                    monitor.Warn( $"{source} contains '{tc.Type}' of kind '{tc.Kind}' that is excluded (by '{excluder:N}'). It is removed and will be ignored." );
                     excluded ??= new List<Type>();
                     excluded.Add( tc.Type );
                 }

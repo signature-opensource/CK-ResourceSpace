@@ -76,7 +76,8 @@ public sealed class TypeSetConfiguration
     public HashSet<Type> Types => _types;
 
     /// <summary>
-    /// Gets the types of the parent that are not members of this set.
+    /// Gets the types of the parent that are not members of this set, with everything that is one of them (see
+    /// <see cref="TypeExclusion"/>).
     /// </summary>
     public HashSet<Type> ExcludedTypes => _excludedTypes;
 

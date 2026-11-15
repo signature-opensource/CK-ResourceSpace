@@ -366,7 +366,8 @@ public sealed partial class EngineConfiguration
     public HashSet<string> ExcludedAssemblies => _excludedAssemblies;
 
     /// <summary>
-    /// Gets a mutable set of type that must be excluded from registration.
+    /// Gets a mutable set of type that must be excluded from registration, with everything that is one of them (see
+    /// <see cref="TypeExclusion"/>).
     /// This applies to all <see cref="BinPaths"/>: excluding a type here guaranties its exclusion
     /// from any BinPath.
     /// </summary>

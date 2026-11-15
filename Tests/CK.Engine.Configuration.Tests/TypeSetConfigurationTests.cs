@@ -80,6 +80,26 @@ public class TypeSetConfigurationTests
         }
     }
 
+    public class SpecializedType : SomeType { }
+
+    [Test]
+    public void an_exclusion_excludes_the_specializations()
+    {
+        var c = new EngineConfiguration();
+        c.FirstBinPath.ExcludedTypes.Add( typeof( SomeType ) );
+        c.FirstBinPath.Types.Add( typeof( SpecializedType ) );
+        var s = new TypeSetConfiguration( "$Party" );
+        s.Types.Add( typeof( SpecializedType ) );
+        c.FirstBinPath.AddTypeSet( s );
+        using( TestHelper.Monitor.CollectTexts( out var texts ) )
+        {
+            c.NormalizeConfiguration( TestHelper.Monitor ).ShouldBeFalse();
+            texts.ShouldContain( t => t.Contains( "SpecializedType" ) && t.Contains( "that is excluded (by" ) && t.Contains( "It is removed and will be ignored." ) );
+            texts.ShouldContain( t => t.Contains( "adds the type" ) && t.Contains( "that the BinPath excludes (by" ) );
+        }
+        c.FirstBinPath.Types.ShouldBeEmpty();
+    }
+
     [Test]
     public void the_parents_cannot_form_a_cycle()
     {

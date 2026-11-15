@@ -124,7 +124,9 @@ public sealed partial class BinPathConfiguration
     public TypeConfigurationSet Types => _types;
 
     /// <summary>
-    /// Gets a set of types that must be excluded from registration.
+    /// Gets a set of types that must be excluded from registration, with everything that is one of them: their
+    /// specializations, their implementations (see <see cref="TypeExclusion"/>). The <c>[AlsoRegisterType]</c> of a
+    /// registered type cannot bring an excluded type back: it is an error.
     /// <para>
     /// Note that any type appearing in <see cref="EngineConfiguration.GlobalExcludedTypes"/> will also
     /// be excluded.
