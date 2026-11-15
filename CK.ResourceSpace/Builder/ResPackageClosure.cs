@@ -25,7 +25,8 @@ using Ref = ResPackageDescriptor.Ref;
 ///     <item>A reference to a multiple abstraction never keeps a package.</item>
 ///     <item>
 ///     A required reference to a single abstraction keeps its implementation: the only root candidate that implements it,
-///     otherwise the only candidate that implements it.
+///     otherwise the only candidate that implements it (when the closure covers several scopes, see the checkSingleUniqueness
+///     parameter of <see cref="Compute"/>, all its root implementations).
 ///     </item>
 ///     <item>A required reference that cannot be resolved among the candidates is an error.</item>
 ///     <item>
@@ -48,19 +49,26 @@ public static class ResPackageClosure
     /// The type compatibility rule of the space (see <see cref="IResPackageDescriptorResolver.IsCompatible(ICachedType)"/>).
     /// Defaults to every type being compatible.
     /// </param>
+    /// <param name="checkSingleUniqueness">
+    /// False when the closure covers several scopes in which the single abstractions are unique (the set of a party
+    /// contains the sets of its clients, and each client can have its implementation): a required reference to a single
+    /// abstraction keeps all its root implementations (when there is none, the only candidate that implements it) and
+    /// the kept packages may contain more than one implementation of it. The uniqueness is then checked in each scope.
+    /// </param>
     /// <returns>The kept packages or null on error.</returns>
     public static HashSet<ICachedType>? Compute( IActivityMonitor monitor,
                                                  GlobalTypeCache typeCache,
                                                  IEnumerable<ICachedType> candidates,
                                                  Func<ICachedType, bool> isRoot,
-                                                 Func<ICachedType, bool>? isCompatible = null )
+                                                 Func<ICachedType, bool>? isCompatible = null,
+                                                 bool checkSingleUniqueness = true )
     {
         Throw.CheckNotNullArgument( monitor );
         Throw.CheckNotNullArgument( typeCache );
         Throw.CheckNotNullArgument( candidates );
         Throw.CheckNotNullArgument( isRoot );
 
-        var state = new State( monitor, typeCache, isCompatible );
+        var state = new State( monitor, typeCache, isCompatible, checkSingleUniqueness );
         var resourceGroup = typeof( IResourceGroup );
         foreach( var c in candidates )
         {
@@ -123,8 +131,8 @@ public static class ResPackageClosure
                 state.Follow( "AlsoRegisterType", new Ref( also ) );
             }
         }
-        // A single abstraction cannot have more than one kept implementation.
-        foreach( var (key, implementations) in state.SingleImplementations )
+        // A single abstraction cannot have more than one kept implementation (in the scope of the closure).
+        foreach( var (key, implementations) in checkSingleUniqueness ? state.SingleImplementations : new Dictionary<ICachedType, List<ICachedType>>() )
         {
             if( implementations.Count( state.Result.Contains ) > 1 )
             {
@@ -140,6 +148,7 @@ public static class ResPackageClosure
         readonly IActivityMonitor _monitor;
         readonly GlobalTypeCache _typeCache;
         readonly Func<ICachedType, bool>? _isCompatible;
+        readonly bool _checkSingleUniqueness;
         public readonly Dictionary<object, ICachedType> Index = new();
         public readonly HashSet<ICachedType> Roots = new();
         public readonly Dictionary<ICachedType, List<ICachedType>> SingleImplementations = new();
@@ -148,11 +157,12 @@ public static class ResPackageClosure
         public ICachedType? Current;
         public bool Success = true;
 
-        public State( IActivityMonitor monitor, GlobalTypeCache typeCache, Func<ICachedType, bool>? isCompatible )
+        public State( IActivityMonitor monitor, GlobalTypeCache typeCache, Func<ICachedType, bool>? isCompatible, bool checkSingleUniqueness )
         {
             _monitor = monitor;
             _typeCache = typeCache;
             _isCompatible = isCompatible;
+            _checkSingleUniqueness = checkSingleUniqueness;
         }
 
         public bool IsCompatible( ICachedType type ) => _isCompatible == null || _isCompatible( type );
@@ -179,6 +189,20 @@ public static class ResPackageClosure
                         }
                         // A reference to a multiple abstraction never keeps a package.
                         return;
+                    }
+                    if( !_checkSingleUniqueness )
+                    {
+                        // Several scopes: all the root implementations are kept.
+                        SingleImplementations.TryGetValue( abstraction, out var all );
+                        var rootImplementations = all?.Where( Roots.Contains ).ToList();
+                        if( rootImplementations != null && rootImplementations.Count > 1 )
+                        {
+                            foreach( var i in rootImplementations )
+                            {
+                                if( Result.Add( i ) ) Queue.Enqueue( i );
+                            }
+                            return;
+                        }
                     }
                     target = ResolveSingle( abstraction );
                     if( target == null )
