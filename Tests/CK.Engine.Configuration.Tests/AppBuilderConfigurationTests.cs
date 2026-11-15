@@ -142,7 +142,7 @@ public class AppBuilderConfigurationTests
         var projected = ImmutableConfigurationSection.CreateFromJson( "appsettings", File.ReadAllText( back.HostProjectPath.AppendPart( "appsettings.json" ) ) );
         projected.GetChildren().Select( c => c.Key ).ShouldBe( ["CK-AppIdentity", "Logging"] );
         projected["CK-AppIdentity:FullName"].ShouldBe( "Sample/$Back" );
-        projected["CK-AppIdentity:Local:HttpEndpoint"].ShouldBe( "true" );
+        projected["CK-AppIdentity:Local:HttpEndpoint"].ShouldBe( "True" );
         projected["CK-AppIdentity:Parties:0:PartyName"].ShouldBe( "$Front" );
         projected["Logging:LogLevel:Default"].ShouldBe( "Warning" );
     }
