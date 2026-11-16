@@ -9,7 +9,7 @@ depends on no engine: the engine, the builder and the contributors of the packag
 |------|------|
 | `EngineConfiguration` | The root: global options (`BasePath`, `GlobalTypes`, `GlobalExcludedTypes`, `ExcludedAssemblies`...), the `Aspects` and the `BinPaths`. Read from and written to XML (a `CKSetup.xml`). `EngineConfiguration.NormalizeConfiguration` checks it. |
 | `BinPathConfiguration` | A BinPath: its `Path`, its `Assemblies`, its `Types` and `ExcludedTypes`, its named `TypeSets`, its aspects. |
-| `TypeSetConfiguration` | A named set of types of a BinPath, computed inside its `Parent` set: its roots (`Types`, `Features`: the feature names of packages) and its exclusions (`ExcludedTypes`, `ExcludedFeatures`). |
+| `TypeSetConfiguration` | A named set of types of a BinPath, computed inside its `Parent` set: its roots (`Types`) and its exclusions (`ExcludedTypes`). The types drive: the configuration names of the configurable types are the keys of their sections, they never bring a type in. |
 | `TypeConfiguration`, `TypeConfigurationSet` | A configured type and its kind. |
 | `EngineAspectConfiguration`, `BinPathAspectConfiguration`, `MultipleBinPathAspectConfiguration<T>` | The base classes of the aspects' configurations, at the engine level and per BinPath. |
 

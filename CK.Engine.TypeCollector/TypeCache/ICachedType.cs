@@ -200,6 +200,51 @@ public interface ICachedType : ICachedItem
     bool TryGetMapping( IActivityMonitor monitor, [NotNullWhen( true )] out CachedTypeMapping? mapping );
 
     /// <summary>
+    /// Gets whether this type is optional: the closest class (this one or one of its base classes) that is decorated with
+    /// at least one <see cref="IOptionalResourceGroupAttribute"/> has only optional ones. A configurable type is optional
+    /// when its <see cref="IConfigurableTypeAttribute.Activation"/> is <see cref="TypeActivation.Optional"/> (the
+    /// <see cref="IConfigurableTypeAttribute"/> is an <see cref="IOptionalResourceGroupAttribute"/>). False when no such
+    /// attribute exists.
+    /// <para>
+    /// The set computation uses it: an optional package is a member of a set only when it is rooted. This lets an assembly
+    /// offer more than what an application eventually uses while keeping the unused code out.
+    /// </para>
+    /// </summary>
+    bool IsOptional { get; }
+
+    /// <summary>
+    /// Gets the <see cref="IConfigurableTypeAttribute"/> of this type when it is a configurable type: the configuration
+    /// names it, configures it and switches it. The attribute is read on this type only (not on its base classes).
+    /// <para>
+    /// This is computed once. On the first call, an invalid declaration (more than one attribute, a type that is not a
+    /// package - a concrete <see cref="IResourceGroup"/> -, an invalid name (see <see cref="IsValidConfigurationName(string?)"/>),
+    /// an activation that is not <see cref="TypeActivation.Optional"/>, <see cref="TypeActivation.ByDefault"/> or
+    /// <see cref="TypeActivation.Required"/>) is logged as an error and false is returned (by this call and the following ones).
+    /// </para>
+    /// </summary>
+    /// <param name="monitor">The monitor that logs the errors of the first call.</param>
+    /// <param name="configurable">The attribute on success, null when this type is not a configurable type.</param>
+    /// <returns>True on success, false on error.</returns>
+    bool TryGetConfigurableType( IActivityMonitor monitor, out IConfigurableTypeAttribute? configurable );
+
+    /// <summary>
+    /// Gets whether a string is a valid configuration name (see <see cref="IConfigurableTypeAttribute.Name"/>): an
+    /// identifier made of letters, digits and dots that starts with a letter (and doesn't end with a dot, without
+    /// consecutive dots). The names are compared case insensitively.
+    /// </summary>
+    /// <param name="name">The name to check.</param>
+    /// <returns>True if it is valid.</returns>
+    static bool IsValidConfigurationName( string? name )
+    {
+        if( string.IsNullOrEmpty( name ) || !char.IsAsciiLetter( name[0] ) || name[^1] == '.' ) return false;
+        foreach( var c in name )
+        {
+            if( !char.IsAsciiLetterOrDigit( c ) && c != '.' ) return false;
+        }
+        return !name.Contains( ".." );
+    }
+
+    /// <summary>
     /// Returns the <see cref="CSharpName"/>.
     /// </summary>
     /// <returns>This type C# name.</returns>

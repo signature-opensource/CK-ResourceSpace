@@ -88,5 +88,12 @@ partial class CachedType
             throw new NotImplementedException();
         }
 
+        public bool IsOptional => throw new NotImplementedException();
+
+        public bool TryGetConfigurableType( IActivityMonitor monitor, out IConfigurableTypeAttribute? configurable )
+        {
+            throw new NotImplementedException();
+        }
+
     }
 }

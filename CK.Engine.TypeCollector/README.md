@@ -77,3 +77,19 @@ Like the rest of the cache, only the visible types are considered: a non visible
 
 `TryGetMapping` is the first of the structural traits that report their incoherencies: it is meant to replace the older ones
 like `IsTypeDefiner`.
+
+## Configurable types and optionality
+`ICachedType.TryGetConfigurableType( monitor, out IConfigurableTypeAttribute? configurable )` computes once whether a type is a
+configurable type: the configuration names it (the key of its section), configures it and switches it (see
+[CK.ResourceSpace.Abstractions](https://github.com/signature-opensource/CK-Abstractions/blob/stable/CK.ResourceSpace.Abstractions/README.md#configurable-types)).
+The attribute is read on the type itself, never inherited: the name is a contract of the configuration. The first call logs the
+invalid declarations and returns false (this is memorized): more than one attribute, a type that is not a package (a concrete
+`IResourceGroup`), an invalid name (`ICachedType.IsValidConfigurationName`: letters, digits and dots, starting with a letter), an
+activation that is not `Optional`, `ByDefault` or `Required`.
+
+`ICachedType.IsOptional` is the optionality of a package: the closest class (the type or one of its base classes) decorated with
+`IOptionalResourceGroupAttribute` has only optional ones. A configurable type is optional when its activation is `Optional` (the
+`IConfigurableTypeAttribute` is an `IOptionalResourceGroupAttribute`): one rule for every package. This optionality lets an assembly
+offer more than what an application eventually uses while keeping the unused code out.
+
+Both read the attribute data first (no instantiation): the attributes are instantiated only on the type that declares one.

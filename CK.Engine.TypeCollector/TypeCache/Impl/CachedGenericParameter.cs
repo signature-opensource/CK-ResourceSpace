@@ -108,6 +108,14 @@ sealed class CachedGenericParameter : ICachedType
         return true;
     }
 
+    public bool IsOptional => false;
+
+    public bool TryGetConfigurableType( IActivityMonitor monitor, out IConfigurableTypeAttribute? configurable )
+    {
+        configurable = null;
+        return true;
+    }
+
     public StringBuilder Write( StringBuilder b ) => b.Append( _parameter.Name );
 
     public bool IsGenericType => false;
