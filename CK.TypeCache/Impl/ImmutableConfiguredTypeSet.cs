@@ -5,7 +5,7 @@ using System.Collections.Immutable;
 namespace CK.TypeCache;
 
 /// <summary>
-/// A set of types without configured kinds, that doesn't change: public for the engine's projects (CK.Engine.TypeSet).
+/// A set of types without configured kinds, that doesn't change: public for the engine's projects (CK.TypeSet).
 /// </summary>
 public sealed class ImmutableConfiguredTypeSet : IConfiguredTypeSet
 {

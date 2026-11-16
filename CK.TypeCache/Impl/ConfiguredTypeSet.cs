@@ -9,7 +9,7 @@ namespace CK.TypeCache;
 
 /// <summary>
 /// The mutable working set of the engine while it selects the types of a BinPath: public for the engine's projects
-/// (CK.Engine.TypeSet), not a contract to keep.
+/// (CK.TypeSet), not a contract to keep.
 /// </summary>
 public sealed class ConfiguredTypeSet : IConfiguredTypeSet
 {

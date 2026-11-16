@@ -13,7 +13,7 @@ namespace CK.TypeCache;
 /// the <see cref="AssemblyCache.BinPathGroup.HeadAssemblies"/>).
 /// </para>
 /// <para>
-/// The final set is the ConfiguredTypes of the BinPathTypeGroup (CK.Engine.TypeSet) that applied its <see cref="BinPathConfiguration.Types"/>
+/// The final set is the ConfiguredTypes of the BinPathTypeGroup (CK.TypeSet) that applied its <see cref="BinPathConfiguration.Types"/>
 /// and <see cref="BinPathConfiguration.ExcludedTypes"/> to the initial one.
 /// </para>
 /// </summary>
