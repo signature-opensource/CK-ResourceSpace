@@ -1,4 +1,4 @@
-using CK.Engine.TypeCollector;
+using CK.TypeCache;
 
 namespace CK.Core;
 

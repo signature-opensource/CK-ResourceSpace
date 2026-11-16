@@ -1,6 +1,6 @@
 using CK.BinarySerialization;
 using CK.Core;
-using CK.Engine.TypeCollector;
+using CK.TypeCache;
 using NUnit.Framework;
 using Shouldly;
 using System;

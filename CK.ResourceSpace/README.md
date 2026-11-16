@@ -268,5 +268,5 @@ so a specialized handler that forgets to implement it compiles and then has no L
 - [CK.ResourceSpace.Abstractions](https://github.com/signature-opensource/CK-Abstractions/blob/stable/CK.ResourceSpace.Abstractions/README.md)
   for `IResourcePackage` and the topology declarations (`[Requires<>]`, `[Package<>]`, `[Children<>]`...,
   `IResourceGroupTopologyAttribute`).
-- `CK.Engine.TypeCollector` for `GlobalTypeCache` and `ICachedType`.
+- `CK.TypeCache` for `GlobalTypeCache` and `ICachedType`.
 - [CK.BinarySerialization.Sliced](https://github.com/signature-opensource/CK-BinarySerialization/blob/stable/CK.BinarySerialization.Sliced/README.md) for the Live state and the serialization of `ResCoreData`.

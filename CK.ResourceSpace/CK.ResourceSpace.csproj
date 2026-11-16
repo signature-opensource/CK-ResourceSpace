@@ -9,6 +9,6 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="CK.EmbeddedResources" Version="5.0.0-0.cris-auth.0.ci.12" />
-    <ProjectReference Include="..\CK.Engine.TypeCollector\CK.Engine.TypeCollector.csproj" />
+    <ProjectReference Include="..\CK.TypeCache\CK.TypeCache.csproj" />
   </ItemGroup>
 </Project>
