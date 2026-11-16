@@ -13,7 +13,7 @@ namespace CK.Setup;
 ///   <item>
 ///   Its packages (the concrete <c>IResourceGroup</c>) are the closure of its roots (their required relations) among the
 ///   packages of its parent minus its <see cref="ExcludedTypes"/>. The roots are the packages of its <see cref="Types"/>;
-///   with none, the non optional packages of its parent.
+///   with none, nothing restricts the set: it has all the packages of its parent (the playground).
 ///   </item>
 ///   <item>Its other types are the ones of its parent minus its <see cref="ExcludedTypes"/>.</item>
 ///   <item>The <c>[AlsoRegisterType]</c> of its members are members.</item>

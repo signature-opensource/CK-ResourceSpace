@@ -206,8 +206,8 @@ public interface ICachedType : ICachedItem
     /// <see cref="IConfigurableTypeAttribute"/> is an <see cref="IOptionalResourceGroupAttribute"/>). False when no such
     /// attribute exists.
     /// <para>
-    /// The set computation uses it: an optional package is a member of a set only when it is rooted. This lets an assembly
-    /// offer more than what an application eventually uses while keeping the unused code out.
+    /// The engines that process a set apply it (an optional package is kept only when something requires it): this lets
+    /// an assembly offer more than what an application eventually uses while keeping the unused code out.
     /// </para>
     /// </summary>
     bool IsOptional { get; }
