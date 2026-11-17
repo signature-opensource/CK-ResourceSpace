@@ -11,7 +11,7 @@ its Apps, keyed by their name, each one with the configuration of its host, and 
 ```jsonc
 {
   // The Builder aspects: they apply to the whole engine run.
-  "Aspects": { ... },
+  "Aspects": { "SqlServer": { "DefaultDatabaseConnectionString": "Server=.;Database=MyDB;Integrated Security=True" } },
   "Apps": {
     "Back1": {
       "Types": [ "CK.Core.IActivityMonitor, CK.ActivityMonitor",
@@ -35,8 +35,7 @@ its Apps, keyed by their name, each one with the configuration of its host, and 
   `ExcludedTypes`, `Assemblies`, `DiscoverAssembliesFromPath`, `CompileOption`, `GenerateSourceFiles`, `AppProject`,
   `HostProject` and `Aspects`. The other keys are the configuration of the host.
 - **The aspects are compile time,** at the root (the Builder aspects) and in an App (its aspects), keyed by their
-  name. Each one is read by the contributor of the package that handles it: an aspect that no contributor reads is an
-  error.
+  name (see [The aspects](#the-aspects) below). An aspect key that nothing reads is an error.
 - **The keys are case insensitive** (it is a configuration): a duplicate key (`Back1` and `back1`) is an error. The
   order of the Apps means nothing: the engine receives them sorted by name.
 - **The host's `appsettings.json` is a projection of its App:** its content without the compile time keys (the ones
@@ -46,6 +45,27 @@ its Apps, keyed by their name, each one with the configuration of its host, and 
 - **A `CKSetup.xml` may complete it** with the aspects that are not deduced yet and the global options of the engine,
   but no BinPath.
 
+## The aspects
+
+An aspect is a configurable type of a model: a package (a concrete `IResourceGroup`) decorated with
+`[AppBuilderAspect( "Name", TypeActivation.X )]` (a Builder aspect, `IAppBuilderAspect`: one per engine run, at the root
+`"Aspects"`) or `[AppAspect( "Name", TypeActivation.X )]` (an App aspect, `IAppAspect`: in the `"Aspects"` of an App).
+The builder finds them in the type sets of the Apps, before the contributors run:
+
+- **The types drive, the sections configure:** an aspect is present when it is a member of the set of an App (its
+  activation `ByDefault` or `Required`) or when its key is declared (`Optional`), unless its key is `false` (an error
+  for a `Required` one). Its key never brings its type in.
+- **The aspect declares its data:** it has one public constructor, without parameter or with its section (a plain
+  `IConfiguration`, null for a bare `true` or when its activation makes it present); it reads its settings and throws
+  on an invalid value.
+- **It applies itself:** `IAppBuilderAspect.Apply( monitor, context, apps )` (the Apps whose set contains it) or
+  `IAppAspect.Apply( monitor, context, app )` ensures and configures its engine aspect configurations and projects its
+  run time settings in the hosts: `AppConfiguration.ProjectValue( path, value )` writes a value in a root section of
+  the host's `appsettings.json` (that can't be a key of the App).
+
+The "SqlServer" aspect (`SqlServerAspect`, CK.SqlServer.Setup.Model) is a Builder aspect: its
+`DefaultDatabaseConnectionString` is projected as `"SqlServer": { "DefaultDatabaseConnectionString" }` in each host.
+
 ## The contributors' contract
 
 The engines deduce the engine configuration from the `ckonf.json`: they declare an `IAppBuilderContributor` with
@@ -53,8 +73,9 @@ The engines deduce the engine configuration from the `ckonf.json`: they declare 
 
 - `IAppBuilderContributor.Contribute( monitor, context )` reads the `context.Apps` (an `AppConfiguration`: its name,
   its projects, its `Configuration` section, its `Aspects`, its engine `BinPathConfiguration`) and the Builder
-  `context.Aspects`, and completes the `context.EngineConfiguration` (the aspects it deduces or reads).
-  - `AppAspects.TryGetAspect( name )` reads an aspect and marks it as handled.
+  `context.Aspects`, and completes the `context.EngineConfiguration` (what it deduces from the Apps).
+  - `AppAspects.TryGetAspect( name )` reads an aspect section and marks it as handled (for a contributor that reads an
+    aspect that is not yet an aspect type).
   - `AppConfiguration.AddCompileKey( path )` keeps a key out of the projection.
   - `AppConfiguration.AddDeclarationKey( path )` keeps a declaration: a section (a feature of a client) that the
     projection empties (all its keys are compile time keys) is written as `true`.
