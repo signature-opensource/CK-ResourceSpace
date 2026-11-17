@@ -212,7 +212,7 @@ public sealed class AppBuilderConfiguration
     }
 
     /// <summary>
-    /// Checks that every aspect (of the builder and of each App) has been handled by a contributor.
+    /// Checks that every aspect key (of the builder and of each App) names an aspect that the builder applied.
     /// </summary>
     /// <param name="monitor">The monitor to use.</param>
     /// <returns>True on success, false on error.</returns>

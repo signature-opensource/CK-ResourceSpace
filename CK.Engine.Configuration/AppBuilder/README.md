@@ -73,9 +73,8 @@ The engines deduce the engine configuration from the `ckonf.json`: they declare 
 
 - `IAppBuilderContributor.Contribute( monitor, context )` reads the `context.Apps` (an `AppConfiguration`: its name,
   its projects, its `Configuration` section, its `Aspects`, its engine `BinPathConfiguration`) and the Builder
-  `context.Aspects`, and completes the `context.EngineConfiguration` (what it deduces from the Apps).
-  - `AppAspects.TryGetAspect( name )` reads an aspect section and marks it as handled (for a contributor that reads an
-    aspect that is not yet an aspect type).
+  `context.Aspects`, and completes the `context.EngineConfiguration` (what it deduces from the Apps; the aspects have
+  been applied before).
   - `AppConfiguration.AddCompileKey( path )` keeps a key out of the projection.
   - `AppConfiguration.AddDeclarationKey( path )` keeps a declaration: a section (a feature of a client) that the
     projection empties (all its keys are compile time keys) is written as `true`.

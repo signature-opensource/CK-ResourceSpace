@@ -10,8 +10,9 @@ namespace CK.Setup;
 /// or the aspects of one App (<see cref="AppConfiguration.Aspects"/>). They are compile time: they are never projected as
 /// such in the hosts' "appsettings.json".
 /// <para>
-/// An aspect is read by the contributor that handles it (<see cref="TryGetAspect(string)"/>): once all the contributors
-/// have contributed, an aspect that none of them read is an error ("no package handles the aspect 'X'").
+/// An aspect is a type of a model (<see cref="AppBuilderAspectAttribute"/>, <see cref="AppAspectAttribute"/>): the builder
+/// reads its section (<see cref="TryGetAspect(string)"/>) when it finds the aspect in the type sets of the Apps; then an
+/// aspect key that names no aspect is an error ("no package handles the aspect 'X'"), before the contributors run.
 /// </para>
 /// </summary>
 public sealed class AppAspects
@@ -20,8 +21,7 @@ public sealed class AppAspects
     readonly HashSet<string> _handled;
 
     /// <summary>
-    /// Initializes a new set of aspects. The builder creates them from "ckonf.json"; this is public for the tests of the
-    /// contributors.
+    /// Initializes a new set of aspects. The builder creates them from "ckonf.json"; this is public for the tests.
     /// </summary>
     /// <param name="section">The "Aspects" section, null when there is none.</param>
     public AppAspects( ImmutableConfigurationSection? section )
@@ -36,7 +36,8 @@ public sealed class AppAspects
     public ImmutableConfigurationSection? Section => _section;
 
     /// <summary>
-    /// Gets the configuration of an aspect and marks it as handled.
+    /// Gets the configuration of an aspect and marks it as handled. Used by the builder: an aspect receives its section
+    /// in its constructor.
     /// </summary>
     /// <param name="name">The aspect name ("Globalization", "SqlServer"...).</param>
     /// <returns>Its configuration, or null when it is not configured.</returns>
