@@ -15,6 +15,7 @@ public sealed class AppConfiguration
     readonly HashSet<string> _compileKeys;
     readonly HashSet<string> _declarationKeys;
     readonly Dictionary<string, string> _projectedSections;
+    readonly Dictionary<string, string> _projectedValues;
 
     /// <summary>
     /// Initializes a new App. The builder creates them from "ckonf.json"; this is public for the tests of the contributors.
@@ -39,6 +40,7 @@ public sealed class AppConfiguration
         _compileKeys = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
         _declarationKeys = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
         _projectedSections = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase );
+        _projectedValues = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase );
     }
 
     /// <summary>
@@ -127,6 +129,29 @@ public sealed class AppConfiguration
     /// Gets the keys declared by <see cref="ProjectInSection(string, string)"/> and their section.
     /// </summary>
     public IReadOnlyDictionary<string, string> ProjectedSections => _projectedSections;
+
+    /// <summary>
+    /// Projects a value at a path of the host's "appsettings.json" (outside its App's keys): the run time settings of an
+    /// aspect ("SqlServer:DefaultDatabaseConnectionString"). The first part of the path is a root section of the host
+    /// that can't be a key of the App.
+    /// </summary>
+    /// <param name="path">The path in the host's configuration (':' separated).</param>
+    /// <param name="value">The value.</param>
+    public void ProjectValue( string path, string value )
+    {
+        Throw.CheckNotNullOrWhiteSpaceArgument( path );
+        Throw.CheckNotNullArgument( value );
+        if( _projectedValues.TryGetValue( path, out var already ) && already != value )
+        {
+            Throw.InvalidOperationException( $"The path '{path}' of {this} is already projected with another value." );
+        }
+        _projectedValues[path] = value;
+    }
+
+    /// <summary>
+    /// Gets the values projected by <see cref="ProjectValue(string, string)"/>, by path.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> ProjectedValues => _projectedValues;
 
     /// <inheritdoc />
     public override string ToString() => $"App '{Name}'";

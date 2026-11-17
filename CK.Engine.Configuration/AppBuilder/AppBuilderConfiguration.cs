@@ -358,7 +358,7 @@ public sealed class AppBuilderConfiguration
                 // A declaration that the removal emptied stays: it is written as true.
                 foreach( var path in a.DeclarationKeys ) KeepDeclaration( node, path.Split( ':' ) );
             }
-            if( !MoveInSections( monitor, a, node ) )
+            if( !MoveInSections( monitor, a, node ) || !SetValues( monitor, a, node ) )
             {
                 success = false;
                 continue;
@@ -399,6 +399,34 @@ public sealed class AppBuilderConfiguration
                 o = child;
             }
             if( o[path[^1]] is JsonObject { Count: 0 } ) o[path[^1]] = true;
+        }
+
+        // The values projected by the aspects: their root section can't be a key of the App.
+        static bool SetValues( IActivityMonitor monitor, AppConfiguration a, JsonObject node )
+        {
+            bool success = true;
+            foreach( var (path, value) in a.ProjectedValues.OrderBy( kv => kv.Key, StringComparer.OrdinalIgnoreCase ) )
+            {
+                var parts = path.Split( ':' );
+                if( a.Configuration.TryGetSection( parts[0] ) != null )
+                {
+                    monitor.Error( $"The key '{parts[0]}' of {a} is the root section in which '{path}' is projected: it can't be a key of the App." );
+                    success = false;
+                    continue;
+                }
+                var o = node;
+                for( int i = 0; i < parts.Length - 1; ++i )
+                {
+                    if( o[parts[i]] is not JsonObject child )
+                    {
+                        child = new JsonObject();
+                        o[parts[i]] = child;
+                    }
+                    o = child;
+                }
+                o[parts[^1]] = value;
+            }
+            return success;
         }
 
         // The keys projected in a section are moved in it, in their order in the App. The section can't be a key of the

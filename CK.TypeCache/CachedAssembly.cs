@@ -109,6 +109,26 @@ public sealed class CachedAssembly : IComparable<CachedAssembly>
     public string Name => _assemblyName;
 
     /// <summary>
+    /// Gets the engines that this assembly requires: its <see cref="RequiredEngineAttribute"/> (the name of the engine
+    /// assembly and its optional NuGet version range).
+    /// </summary>
+    public IEnumerable<(string Name, string? VersionRange)> RequiredEngines
+    {
+        get
+        {
+            foreach( var a in CustomAttributes )
+            {
+                if( a.AttributeType.Name == nameof( RequiredEngineAttribute )
+                    && a.ConstructorArguments.Count >= 1
+                    && a.ConstructorArguments[0].Value is string name )
+                {
+                    yield return (name, a.ConstructorArguments.Count > 1 ? a.ConstructorArguments[1].Value as string : null);
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Gets this assembly's full name.
     /// </summary>
     public string FullName => _assemblyFullName;
