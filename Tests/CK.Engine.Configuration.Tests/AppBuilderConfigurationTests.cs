@@ -175,6 +175,35 @@ public class AppBuilderConfigurationTests
     }
 
     [Test]
+    public void the_values_projected_by_an_aspect_are_root_sections_of_the_host()
+    {
+        var builder = CreateSolution( """{ "Apps": { "Back": { "FullName": "Sample/$Back", "Logging": { "LogLevel": { "Default": "Warning" } } } } }""", "Back" );
+        var app = Load( builder, out _ ).ShouldNotBeNull();
+        var back = app.Apps.Single();
+        back.ProjectInSection( "FullName", "CK-AppIdentity" );
+        // What the "SqlServer" aspect does.
+        back.ProjectValue( "SqlServer:DefaultDatabaseConnectionString", "Server=.;Database=Db" );
+        app.WriteProjections( TestHelper.Monitor ).ShouldBeTrue();
+
+        var projected = ImmutableConfigurationSection.CreateFromJson( "appsettings", File.ReadAllText( back.HostProjectPath.AppendPart( "appsettings.json" ) ) );
+        projected.GetChildren().Select( c => c.Key ).ShouldBe( ["CK-AppIdentity", "Logging", "SqlServer"] );
+        projected["SqlServer:DefaultDatabaseConnectionString"].ShouldBe( "Server=.;Database=Db" );
+    }
+
+    [Test]
+    public void a_projected_value_cannot_be_in_a_key_of_the_App()
+    {
+        var builder = CreateSolution( """{ "Apps": { "Back": { "SqlServer": {} } } }""", "Back" );
+        var app = Load( builder, out _ ).ShouldNotBeNull();
+        app.Apps[0].ProjectValue( "SqlServer:DefaultDatabaseConnectionString", "Server=.;Database=Db" );
+        using( TestHelper.Monitor.CollectTexts( out var texts ) )
+        {
+            app.WriteProjections( TestHelper.Monitor ).ShouldBeFalse();
+            texts.ShouldContain( t => t.Contains( "is the root section in which 'SqlServer:DefaultDatabaseConnectionString' is projected" ) );
+        }
+    }
+
+    [Test]
     public void a_section_in_which_keys_are_projected_cannot_be_a_key_of_the_App()
     {
         var builder = CreateSolution( """{ "Apps": { "Back": { "FullName": "Sample/$Back", "CK-AppIdentity": {} } } }""", "Back" );
