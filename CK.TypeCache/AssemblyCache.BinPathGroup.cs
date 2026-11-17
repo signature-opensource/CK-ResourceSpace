@@ -153,13 +153,13 @@ public sealed partial class AssemblyCache // BinPathGroup
                     return _success = false;
                 }
                 // In explicit mode, all added assemblies are de facto head assemblies.
-                if( cachedAssembly.Kind == AssemblyKind.PFeature )
+                if( cachedAssembly.Kind == AssemblyKind.Model )
                 {
                     _heads[cachedAssembly] = true;
                 }
                 else
                 {
-                    monitor.Warn( $"Assembly '{cachedAssembly.Name}' is not a PFeature but '{cachedAssembly.Kind}'. Ignored." );
+                    monitor.Warn( $"Assembly '{cachedAssembly.Name}' is not a Model but '{cachedAssembly.Kind}'. Ignored." );
                 }
             }
             return _success;
@@ -270,19 +270,19 @@ public sealed partial class AssemblyCache // BinPathGroup
                         cached._kind &= ~AssemblyKind.Excluded;
                         monitor.Warn( $"Engine assembly '{cached.Name}' is excluded. Ignoring the exclusion." );
                     }
-                    if( cached._kind.IsExcludedPFeatureDefiner() )
+                    if( cached._kind.IsExcludedModelDefiner() )
                     {
                         cached._kind &= ~AssemblyKind.Excluded;
-                        monitor.Warn( $"PFeature definer assembly '{cached.Name}' is excluded. Ignoring the exclusion." );
+                        monitor.Warn( $"model definer assembly '{cached.Name}' is excluded. Ignoring the exclusion." );
                     }
-                    // We don't analyze references of PFeatureDefiner: a definer is a "leaf", it says "Here starts the interesting parts".
-                    // We analyze Engine references in Folder mode only to remove referenced PFeatures from the set of heads.
-                    // We analyze PFeature references only if it is not excluded except in Folder mode: we don't want to miss fake heads.
+                    // We don't analyze references of ModelDefiner: a definer is a "leaf", it says "Here starts the interesting parts".
+                    // We analyze Engine references in Folder mode only to remove referenced Models from the set of heads.
+                    // We analyze Model references only if it is not excluded except in Folder mode: we don't want to miss fake heads.
                     // We always analyze None (excluded or not) to know what it is.
                     bool mustHandleRefererences = cached._kind != AssemblyKind.AutoSkipped
                                                   &&
                                                   ((cached._kind.IsEngine() && !_explicitMode.Value)
-                                                    || (cached._kind.IsPFeature() && (!cached._kind.IsExcluded() || !_explicitMode.Value))
+                                                    || (cached._kind.IsModel() && (!cached._kind.IsExcluded() || !_explicitMode.Value))
                                                     || cached._kind.IsNone());
                     if( mustHandleRefererences )
                     {
@@ -296,9 +296,9 @@ public sealed partial class AssemblyCache // BinPathGroup
                 }
             }
 
-            if( cached.Kind.IsPFeature() )
+            if( cached.Kind.IsModel() )
             {
-                foreach( var aRef in cached.PFeatures )
+                foreach( var aRef in cached.Models )
                 {
                     // aRef is no more a head unless it has been explictly added.
                     if( _heads.TryGetValue( aRef, out var forced ) && !forced )
@@ -308,7 +308,7 @@ public sealed partial class AssemblyCache // BinPathGroup
                 }
                 // If no existing head references this cached assembly, it
                 // is a head (preserve any explicit add).
-                if( !_heads.Any( h => h.Key.AllPFeatures.Contains( cached ) ) )
+                if( !_heads.Any( h => h.Key.AllModels.Contains( cached ) ) )
                 {
                     if( !_heads.TryGetValue( cached, out var forced ) && !forced )
                     {
@@ -329,7 +329,7 @@ public sealed partial class AssemblyCache // BinPathGroup
             var refNames = cached.Assembly.GetReferencedAssemblies();
             var rawRefBuilder = ImmutableArray.CreateBuilder<CachedAssembly>( refNames.Length );
             bool isEngine = cached.Kind.IsEngine();
-            bool isPFeature = cached.Kind.IsPFeature();
+            bool isModel = cached.Kind.IsModel();
             foreach( var name in refNames )
             {
                 // Use the AssemblyName to load the references.
@@ -345,120 +345,120 @@ public sealed partial class AssemblyCache // BinPathGroup
                     }
                     isEngine = true;
                 }
-                isPFeature |= aRef.Kind.IsPFeatureOrDefiner();
+                isModel |= aRef.Kind.IsModelOrDefiner();
             }
             cached._rawReferencedAssembly = rawRefBuilder.MoveToImmutable();
-            // If it is an engine, sets its kind and forget any PFeature aspect.
+            // If it is an engine, sets its kind and forget any Model aspect.
             if( isEngine )
             {
                 cached._kind = cached._kind.SetEngine();
-                // An engine is not a PFeature.
-                isPFeature = false;
+                // An engine is not a Model.
+                isModel = false;
             }
-            // If this assembly is a PFeature, builds the 2 sets of dependencies:
+            // If this assembly is a Model, builds the 2 sets of dependencies:
             // the "all" one and the "curated" ones.
-            HashSet<CachedAssembly>? allPFeatures = null;
-            SortedSet<CachedAssembly>? pFeatures = null;
-            if( isPFeature )
+            HashSet<CachedAssembly>? allModels = null;
+            SortedSet<CachedAssembly>? models = null;
+            if( isModel )
             {
-                cached._kind = cached._kind.SetPFeature();
-                allPFeatures = new HashSet<CachedAssembly>();
-                pFeatures = cached._kind.IsExcluded() ? null : new SortedSet<CachedAssembly>();
+                cached._kind = cached._kind.SetModel();
+                allModels = new HashSet<CachedAssembly>();
+                models = cached._kind.IsExcluded() ? null : new SortedSet<CachedAssembly>();
                 foreach( var aRef in cached._rawReferencedAssembly )
                 {
-                    if( aRef.Kind.IsPFeature() )
+                    if( aRef.Kind.IsModel() )
                     {
                         // Closure set:
-                        allPFeatures.Add( aRef );
-                        allPFeatures.AddRange( aRef._allPFeatures );
-                        // Curated set: union all here, the [ExcludePFeature] attributes of this assembly
+                        allModels.Add( aRef );
+                        allModels.AddRange( aRef._allModels );
+                        // Curated set: union all here, the [RemoveModel] attributes of this assembly
                         // will be applied below.
-                        if( pFeatures != null && !aRef.Kind.IsExcluded() )
+                        if( models != null && !aRef.Kind.IsExcluded() )
                         {
-                            pFeatures.Add( aRef );
-                            pFeatures.AddRange( aRef.PFeatures );
+                            models.Add( aRef );
+                            models.AddRange( aRef.Models );
                         }
                     }
                 }
             }
-            // Always process any ExcludePFeature attributes even if this is not a PFeature
+            // Always process any RemoveModel attributes even if this is not a Model
             // to warn on useless attributes.
-            Throw.DebugAssert( cached._kind.IsNone() || cached._kind.IsEngine() || cached._kind.IsPFeature() );
-            ProcessExcludePFeatures( monitor, cached, allPFeatures, pFeatures );
-            // Types are handled later and only for PFeatures.
-            // Here we just warn if a non PFeature defines [AddType] or [RemoveType] attributes.
-            if( !cached._kind.IsPFeature() )
+            Throw.DebugAssert( cached._kind.IsNone() || cached._kind.IsEngine() || cached._kind.IsModel() );
+            ProcessRemoveModels( monitor, cached, allModels, models );
+            // Types are handled later and only for Models.
+            // Here we just warn if a non Model defines [AddType] or [RemoveType] attributes.
+            if( !cached._kind.IsModel() )
             {
                 if( cached.CustomAttributes.Any( a => a.AttributeType == typeof( AddTypeAttribute ) || a.AttributeType == typeof( RemoveTypeAttribute ) ) )
                 {
                     monitor.Warn( $"""
                               Assembly '{cached.Name}' is '{cached.Kind}' and defines [IncludeCKType] or [ExcludeCKType] attributes, they are ignored.
-                              Only PFeature assemblies can include/exclude types.
+                              Only Model assemblies can include/exclude types.
                               """ );
                 }
             }
-            if( pFeatures != null )
+            if( models != null )
             {
-                Throw.DebugAssert( allPFeatures != null && cached._kind is AssemblyKind.PFeature );
-                cached._pFeatures = pFeatures;
-                cached._allPFeatures = allPFeatures;
+                Throw.DebugAssert( allModels != null && cached._kind is AssemblyKind.Model );
+                cached._models = models;
+                cached._allModels = allModels;
             }
         }
 
         // Called by HandleAssemblyReferences.
-        void ProcessExcludePFeatures( IActivityMonitor monitor,
+        void ProcessRemoveModels( IActivityMonitor monitor,
                                       CachedAssembly cached,
-                                      HashSet<CachedAssembly>? allPFeatures,
-                                      SortedSet<CachedAssembly>? pFeatures )
+                                      HashSet<CachedAssembly>? allModels,
+                                      SortedSet<CachedAssembly>? models )
         {
             // The removed tuple keeps the "name" but can have a null (never seen) CachedAssembly.
-            var excluded = cached.CustomAttributes.Where( a => a.AttributeType == typeof( RemovePFeatureAttribute ) )
+            var excluded = cached.CustomAttributes.Where( a => a.AttributeType == typeof( RemoveModelAttribute ) )
                                  .Select( a => (string?)a.ConstructorArguments[0].Value )
                                  .Select( name => (N: name, A: name != null ? _assemblyCache.Find( name ) : null) );
             foreach( var (name, a) in excluded )
             {
                 if( a == null )
                 {
-                    monitor.Warn( $"Useless [assembly:ExcludePFeature( \"{name}\" )] in assembly '{cached.Name}': assembly '{name}' is unknwon." );
+                    monitor.Warn( $"Useless [assembly:RemoveModel( \"{name}\" )] in assembly '{cached.Name}': assembly '{name}' is unknwon." );
                 }
-                else if( pFeatures == null )
+                else if( models == null )
                 {
-                    if( cached._kind.IsPFeature() )
+                    if( cached._kind.IsModel() )
                     {
                         Throw.DebugAssert( cached._kind.IsExcluded() );
-                        monitor.Trace( $"Ignored [assembly:ExcludePFeature( \"{name}\" )] in PFeature '{cached.Name}' since '{cached.Name}' is excluded." );
+                        monitor.Trace( $"Ignored [assembly:RemoveModel( \"{name}\" )] in Model '{cached.Name}' since '{cached.Name}' is excluded." );
                     }
                     else
                     {
-                        monitor.Warn( $"Ignored [assembly:ExcludePFeature( \"{name}\" )] in assembly '{cached.Name}': this assembly is not a PFeature but '{cached.Kind}'." );
+                        monitor.Warn( $"Ignored [assembly:RemoveModel( \"{name}\" )] in assembly '{cached.Name}': this assembly is not a Model but '{cached.Kind}'." );
                     }
                 }
-                else if( pFeatures.Remove( a ) )
+                else if( models.Remove( a ) )
                 {
                     // Success case: the curated set has been updated.
-                    monitor.Info( $"PFeature '{cached.Name}' excludes its referenced assembly '{name}'. The types from '{name}' won't be automatically registered." );
+                    monitor.Info( $"Model '{cached.Name}' excludes its referenced assembly '{name}'. The types from '{name}' won't be automatically registered." );
                 }
                 else
                 {
-                    if( !a.Kind.IsPFeature() )
+                    if( !a.Kind.IsModel() )
                     {
-                        monitor.Warn( $"Useless [assembly:ExcludePFeature( \"{name}\" )] in assembly '{cached.Name}': '{name}' is not a PFeature but '{a.Kind}'." );
+                        monitor.Warn( $"Useless [assembly:RemoveModel( \"{name}\" )] in assembly '{cached.Name}': '{name}' is not a Model but '{a.Kind}'." );
                     }
                     else
                     {
-                        Throw.DebugAssert( "Because pFeature is not null.", allPFeatures != null );
-                        if( !allPFeatures.Contains( a ) )
+                        Throw.DebugAssert( "Because model is not null.", allModels != null );
+                        if( !allModels.Contains( a ) )
                         {
                             monitor.Warn( $"""
-                                          Useless [assembly:ExcludePFeature( \"{name}\" )] in assembly '{cached.Name}': no such referenced PFeature. Referenced PFeatures are:
-                                          '{allPFeatures.Select( r => r.Name ).Concatenate( "', '" )}'.
+                                          Useless [assembly:RemoveModel( \"{name}\" )] in assembly '{cached.Name}': no such referenced Model. Referenced Models are:
+                                          '{allModels.Select( r => r.Name ).Concatenate( "', '" )}'.
                                           """ );
                         }
                         else
                         {
                             monitor.Warn( $"""
-                                          Useless [assembly:ExcludePFeature( \"{name}\" )] in assembly '{cached.Name}': the '{name}' assembly has already been excluded by the referenced assemblies:
-                                          '{allPFeatures.Where( r => r._allPFeatures.Contains( a ) && !r.PFeatures.Contains( a ) ).Select( r => r.Name ).Concatenate( "', '" )}'.
+                                          Useless [assembly:RemoveModel( \"{name}\" )] in assembly '{cached.Name}': the '{name}' assembly has already been excluded by the referenced assemblies:
+                                          '{allModels.Where( r => r._allModels.Contains( a ) && !r.Models.Contains( a ) ).Select( r => r.Name ).Concatenate( "', '" )}'.
                                           """ );
                         }
                     }

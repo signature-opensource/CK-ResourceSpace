@@ -28,7 +28,7 @@ public sealed partial class AssemblyCache // BinPathGroup.TypeCollector
                 monitor.Trace( $"BinPathGroup '{_groupName}' is on error." );
                 return false;
             }
-            using var _ = monitor.OpenInfo( $"Collecting types for BinPathGroup '{_groupName}' from head PFeatures: '{_heads.Keys.Select( a => a.Name ).Concatenate( "', '" )}'." );
+            using var _ = monitor.OpenInfo( $"Collecting types for BinPathGroup '{_groupName}' from head models: '{_heads.Keys.Select( a => a.Name ).Concatenate( "', '" )}'." );
             using var hasher = IncrementalHash.CreateHash( HashAlgorithmName.SHA1 );
             hasher.Append( _path.Path );
 
@@ -56,7 +56,7 @@ public sealed partial class AssemblyCache // BinPathGroup.TypeCollector
                 var assemblySourceName = assembly.ToString();
                 using var _ = monitor.OpenInfo( assemblySourceName );
                 bool success = true;
-                foreach( var sub in assembly.PFeatures )
+                foreach( var sub in assembly.Models )
                 {
                     success &= CollectTypes( monitor, typeCache, sub, out var subC );
                     c.Add( monitor, subC, assemblySourceName );

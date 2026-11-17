@@ -3,7 +3,7 @@ The assemblies of the BinPaths and the cache of their types. It generates no cod
 configuration tools use it.
 
 ## The AssemblyCache
-Collects assemblies, analyzing `IsPFeatureAttribute`, `IsPFeatureDefinerAttribute`, `ExcludePFeatureAttribute` and their referenced assemblies recursively.
+Collects assemblies, analyzing `IsModelAttribute`, `IsModelDefinerAttribute`, `RemoveModelAttribute` and their referenced assemblies recursively.
 
 Assemblies are considered as sets of types, they are used as a source for the type collector. The `AssemblyCollector` centralizes cached assemblies and
 cached types.
@@ -39,8 +39,8 @@ assembly load context involved. This collector works in two exclusive ways:
   - When `Path` is not the `AppContext.BaseDirectory`, the last write time of the `Path`'s file must not be newer than the BaseDirectory's one.
   - Assembly loading error are only warnings, not errors (to ignore any native .dlls that may exist).
 
-PFeatures that are not referenced by any CKEngines are the "heads": only them will provide their types. An edge case is when a folder has
-no "user PFeatures", when all the PFeatures are "basic" assemblies or purely "PFeature definer" assemblies.
+Models that are not referenced by any CKEngines are the "heads": only them will provide their types. An edge case is when a folder has
+no "user Models", when all the Models are "basic" assemblies or purely "model definer" assemblies.
 In this case there is no "head". This is sound, there's nothing to process and can be trivially handled by using the Explicit mode.
 
 ## BinPath similarity

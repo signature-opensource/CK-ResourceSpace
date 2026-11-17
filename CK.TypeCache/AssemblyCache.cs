@@ -15,8 +15,8 @@ namespace CK.TypeCache;
 public sealed partial class AssemblyCache
 {
     // Don't be tempted to move this excluder down to each BinPath as
-    // this woult break the PFeature sharing accross BinPath (the CachedAssembly
-    // would not be able to host the PFeatures, introducing another cache layer in the
+    // this woult break the Model sharing accross BinPath (the CachedAssembly
+    // would not be able to host the Models, introducing another cache layer in the
     // architecture. Exclusions must be Global.
     readonly Func<string, bool>? _assemblyExcluder;
     readonly NormalizedPath _appContextPath;
@@ -113,7 +113,7 @@ public sealed partial class AssemblyCache
             if( b.Success )
             {
                 sb.AppendLine( $"- {b.ConfiguredTypes.AllTypes.Count} types for group '{b.GroupName}'." );
-                sb.AppendLine( $"  From head PFeatures: '{b.HeadAssemblies.Select( p => p.Name ).Concatenate( "', '" )}'." );
+                sb.AppendLine( $"  From head models: '{b.HeadAssemblies.Select( p => p.Name ).Concatenate( "', '" )}'." );
             }
             else
             {

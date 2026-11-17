@@ -10,7 +10,7 @@ namespace CK.TypeCache;
 public enum AssemblyKind
 {
     /// <summary>
-    /// This assembly is unknown or non relevant: it references no <see cref="PFeatureDefiner"/> nor <see cref="PFeature"/>
+    /// This assembly is unknown or non relevant: it references no <see cref="ModelDefiner"/> nor <see cref="Model"/>
     /// and is not a CKEngine.
     /// </summary>
     None,
@@ -36,16 +36,16 @@ public enum AssemblyKind
     Engine = 8,
 
     /// <summary>
-    /// This is a definer assembly (it is marked with a <see cref="IsPFeatureAttribute"/>).
-    /// Assemblies that reference it are <see cref="PFeature"/>.
+    /// This is a definer assembly (it is marked with a <see cref="IsModelAttribute"/>).
+    /// Assemblies that reference it are <see cref="Model"/>.
     /// </summary>
-    PFeatureDefiner = 16,
+    ModelDefiner = 16,
 
     /// <summary>
-    /// The assembly's visible types will be registered: it is either marked with a <see cref="IsPFeatureAttribute"/>
-    /// or depends (at any depth) on another PFeature or an assembly that is marked with a <see cref="IsPFeatureDefinerAttribute"/>.
+    /// The assembly's visible types will be registered: it is either marked with a <see cref="IsModelAttribute"/>
+    /// or depends (at any depth) on another Model or an assembly that is marked with a <see cref="IsModelDefinerAttribute"/>.
     /// </summary>
-    PFeature = 32
+    Model = 32
 }
 
 /// <summary>
@@ -75,18 +75,18 @@ public static class AssemblyKindExtensions
     public static bool IsNone( this AssemblyKind kind ) => (kind & ~AssemblyKind.Excluded) == 0;
 
     /// <summary>
-    /// Gets whether this assembly is <see cref="AssemblyKind.PFeature"/>.
+    /// Gets whether this assembly is <see cref="AssemblyKind.Model"/>.
     /// </summary>
     /// <param name="kind">This kind.</param>
-    /// <returns>Whether this assembly is a PFeature.</returns>
-    public static bool IsPFeature( this AssemblyKind kind ) => (kind & AssemblyKind.PFeature) != 0;
+    /// <returns>Whether this assembly is a Model.</returns>
+    public static bool IsModel( this AssemblyKind kind ) => (kind & AssemblyKind.Model) != 0;
 
     /// <summary>
-    /// Gets whether this assembly is <see cref="AssemblyKind.PFeatureDefiner"/>.
+    /// Gets whether this assembly is <see cref="AssemblyKind.ModelDefiner"/>.
     /// </summary>
     /// <param name="kind">This kind.</param>
-    /// <returns>Whether this assembly is a PFeature definer.</returns>
-    public static bool IsPFeatureDefiner( this AssemblyKind kind ) => (kind & AssemblyKind.PFeatureDefiner) != 0;
+    /// <returns>Whether this assembly is a model definer.</returns>
+    public static bool IsModelDefiner( this AssemblyKind kind ) => (kind & AssemblyKind.ModelDefiner) != 0;
 
     /// <summary>
     /// Gets whether this assembly is <see cref="AssemblyKind.Engine"/>.
@@ -96,11 +96,11 @@ public static class AssemblyKindExtensions
     public static bool IsEngine( this AssemblyKind kind ) => (kind & AssemblyKind.Engine) != 0;
 
     /// <summary>
-    /// Gets whether this assembly is <see cref="AssemblyKind.PFeature"/> or <see cref="AssemblyKind.PFeatureDefiner"/>.
+    /// Gets whether this assembly is <see cref="AssemblyKind.Model"/> or <see cref="AssemblyKind.ModelDefiner"/>.
     /// </summary>
     /// <param name="kind">This kind.</param>
     /// <returns>Whether this assembly is a feature or a feature definer.</returns>
-    public static bool IsPFeatureOrDefiner( this AssemblyKind kind ) => (kind & (AssemblyKind.PFeature | AssemblyKind.PFeatureDefiner)) != 0;
+    public static bool IsModelOrDefiner( this AssemblyKind kind ) => (kind & (AssemblyKind.Model | AssemblyKind.ModelDefiner)) != 0;
 
     /// <summary>
     /// Gets wether this kind is an excluded engine: this is a warning and Excluded is removed.
@@ -110,31 +110,31 @@ public static class AssemblyKindExtensions
     public static bool IsExcludedEngine( this AssemblyKind kind ) => (kind & (AssemblyKind.Engine | AssemblyKind.Excluded)) == (AssemblyKind.Engine | AssemblyKind.Excluded);
 
     /// <summary>
-    /// Gets wether this kind is an excluded PFeature definer: this is a warning and Excluded is removed.
+    /// Gets wether this kind is an excluded model definer: this is a warning and Excluded is removed.
     /// </summary>
     /// <param name="kind">This kind.</param>
-    /// <returns>Whether this assembly is currently an excluded PFeature definer.</returns>
-    public static bool IsExcludedPFeatureDefiner( this AssemblyKind kind ) => (kind & (AssemblyKind.PFeatureDefiner | AssemblyKind.Excluded)) == (AssemblyKind.PFeatureDefiner | AssemblyKind.Excluded);
+    /// <returns>Whether this assembly is currently an excluded model definer.</returns>
+    public static bool IsExcludedModelDefiner( this AssemblyKind kind ) => (kind & (AssemblyKind.ModelDefiner | AssemblyKind.Excluded)) == (AssemblyKind.ModelDefiner | AssemblyKind.Excluded);
 
     /// <summary>
-    /// Clears <see cref="AssemblyKind.PFeature"/> and <see cref="AssemblyKind.PFeatureDefiner"/> and sets <see cref="AssemblyKind.Engine"/>.
+    /// Clears <see cref="AssemblyKind.Model"/> and <see cref="AssemblyKind.ModelDefiner"/> and sets <see cref="AssemblyKind.Engine"/>.
     /// </summary>
     /// <param name="k">This kind.</param>
     /// <returns>Returns an engine kind.</returns>
     public static AssemblyKind SetEngine( this AssemblyKind k )
     {
-        k &= AssemblyKind.PFeature | AssemblyKind.PFeatureDefiner;
+        k &= AssemblyKind.Model | AssemblyKind.ModelDefiner;
         return k | AssemblyKind.Engine;
     }
 
     /// <summary>
-    /// Clears <see cref="AssemblyKind.PFeatureDefiner"/> and <see cref="AssemblyKind.Engine"/> and sets <see cref="AssemblyKind.PFeature"/>.
+    /// Clears <see cref="AssemblyKind.ModelDefiner"/> and <see cref="AssemblyKind.Engine"/> and sets <see cref="AssemblyKind.Model"/>.
     /// </summary>
     /// <param name="k">This kind.</param>
     /// <returns>Returns an engine kind.</returns>
-    public static AssemblyKind SetPFeature( this AssemblyKind k )
+    public static AssemblyKind SetModel( this AssemblyKind k )
     {
-        k &= AssemblyKind.Engine | AssemblyKind.PFeatureDefiner;
-        return k | AssemblyKind.PFeature;
+        k &= AssemblyKind.Engine | AssemblyKind.ModelDefiner;
+        return k | AssemblyKind.Model;
     }
 }

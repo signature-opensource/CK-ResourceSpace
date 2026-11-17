@@ -26,8 +26,8 @@ public sealed class CachedAssembly : IComparable<CachedAssembly>
     // Initialized by AssemblyCache.DoAdd.
     internal AssemblyKind _kind;
     internal ImmutableArray<CachedAssembly> _rawReferencedAssembly;
-    internal IReadOnlySet<CachedAssembly> _pFeatures;
-    internal IReadOnlySet<CachedAssembly> _allPFeatures;
+    internal IReadOnlySet<CachedAssembly> _models;
+    internal IReadOnlySet<CachedAssembly> _allModels;
     // Initialized by CollectTypes.
     internal ConfiguredTypeSet? _types;
 
@@ -44,8 +44,8 @@ public sealed class CachedAssembly : IComparable<CachedAssembly>
         _kind = initialKind;
         _lastWriteTime = lastWriteTime;
         _isInitialAssembly = isInitialAssembly;
-        _pFeatures = ImmutableHashSet<CachedAssembly>.Empty;
-        _allPFeatures = ImmutableHashSet<CachedAssembly>.Empty;
+        _models = ImmutableHashSet<CachedAssembly>.Empty;
+        _allModels = ImmutableHashSet<CachedAssembly>.Empty;
         Throw.DebugAssert( "These comes from the configuration.", _kind is AssemblyKind.None or AssemblyKind.SystemSkipped or AssemblyKind.Excluded );
         if( initialKind is not AssemblyKind.SystemSkipped )
         {
@@ -68,45 +68,35 @@ public sealed class CachedAssembly : IComparable<CachedAssembly>
     {
         // Initial type detection. Allocates the CustomAttributes.
         uint found = 0;
-        uint foundLegacy = 0;
         foreach( var d in CustomAttributes )
         {
             // Skipped: nothing more to do.
             // This hides the "multiple error" below but we don't care.
-            if( d.AttributeType == typeof( SkippedAssemblyAttribute ) || /*Legacy*/d.AttributeType.Name == "ExcludeFromSetupAttribute" )
+            if( d.AttributeType == typeof( SkippedAssemblyAttribute ) )
             {
                 return AssemblyKind.AutoSkipped;
             }
-            else if( d.AttributeType.Name == nameof( IsPFeatureAttribute ) ) found |= 1;
+            else if( d.AttributeType.Name == nameof( IsModelAttribute ) ) found |= 1;
             else if( d.AttributeType.Name == nameof( IsEngineAttribute ) ) found |= 2;
-            else if( d.AttributeType.Name == nameof( IsPFeatureDefinerAttribute ) ) found |= 4;
-            else if( /*Legacy*/d.AttributeType.Name == "IsModelDependentAttribute" ) foundLegacy |= 1;
-            else if( /*Legacy*/d.AttributeType.Name == "IsSetupDependencyAttribute" ) foundLegacy |= 2;
-            else if( /*Legacy*/d.AttributeType.Name == "IsModelAttribute" ) foundLegacy |= 4;
+            else if( d.AttributeType.Name == nameof( IsModelDefinerAttribute ) ) found |= 4;
         }
         if( BitOperations.PopCount( found ) > 1 )
         {
             // We cannot reaaly do anything else here... We cannot exclude the assembly, nor choose one at random because there is no sensible choice.
             // This is a fucked up assembly: the developper must fix this. 
             Throw.CKException( $"""
-                                Invalid assembly '{_assemblyName}': it contains more than one [IsPFeature], [IsEngine] or [IsPFeatureDefiner].
+                                Invalid assembly '{_assemblyName}': it contains more than one [IsModel], [IsEngine] or [IsModelDefiner].
                                 These attributes are mutually exclusive.
                                 """ );
         }
-        if( found == 0 )
-        {
-            // When IsModel was used the assembly was analyzed :-(.
-            if( (foundLegacy & 2) != 0 ) found = 2;
-            else if( (foundLegacy & (1 | 4)) != 0 ) found = 1;
-        }
-        var k = found switch { 1 => AssemblyKind.PFeature, 2 => AssemblyKind.Engine, 4 => AssemblyKind.PFeatureDefiner, _ => AssemblyKind.None };
+        var k = found switch { 1 => AssemblyKind.Model, 2 => AssemblyKind.Engine, 4 => AssemblyKind.ModelDefiner, _ => AssemblyKind.None };
         if( excluded ) k |= AssemblyKind.Excluded;
         return k;
     }
 
     /// <summary>
     /// Comparing two assemblies is based on the <see cref="Name"/>. This may seem surprising but this is
-    /// enough to order the <see cref="PFeatures"/> that makes type sets composition deterministic AND we are working
+    /// enough to order the <see cref="Models"/> that makes type sets composition deterministic AND we are working
     /// with unique assembly names.
     /// </summary>
     /// <param name="other">The other cached assembly.</param>
@@ -157,7 +147,7 @@ public sealed class CachedAssembly : IComparable<CachedAssembly>
 
     /// <summary>
     /// Gets all the directly referenced assemblies, regardless of their <see cref="Kind"/> and
-    /// any <see cref="ExcludePFeatureAttribute"/> that this assembly can define.
+    /// any <see cref="RemoveModelAttribute"/> that this assembly can define.
     /// <para>
     /// This is always empty when <see cref="AssemblyKind.Excluded"/>, <see cref="AssemblyKind.AutoSkipped"/> or <see cref="AssemblyKind.SystemSkipped"/>
     /// or when <see cref="IsInitialAssembly"/> is false.
@@ -166,16 +156,16 @@ public sealed class CachedAssembly : IComparable<CachedAssembly>
     public ImmutableArray<CachedAssembly> RawReferencedAssemblies => _rawReferencedAssembly;
 
     /// <summary>
-    /// Gets all the <see cref="AssemblyKind.PFeature"/> that this PFeature references. 
+    /// Gets all the <see cref="AssemblyKind.Model"/> that this Model references. 
     /// <para>
     /// This is always empty when <see cref="AssemblyKind.Excluded"/>, <see cref="AssemblyKind.AutoSkipped"/> or <see cref="AssemblyKind.SystemSkipped"/>
     /// or when <see cref="IsInitialAssembly"/> is false.
     /// </para>
     /// </summary>
-    public IReadOnlySet<CachedAssembly> AllPFeatures => _allPFeatures;
+    public IReadOnlySet<CachedAssembly> AllModels => _allModels;
 
     /// <summary>
-    /// Gets the curated closure of <see cref="AssemblyKind.PFeature"/>, considering any <see cref="ExcludePFeatureAttribute"/>
+    /// Gets the curated closure of <see cref="AssemblyKind.Model"/>, considering any <see cref="RemoveModelAttribute"/>
     /// defined by this assembly and by referenced ones: a referenced assembly doesn't appear here if it has been excluded by
     /// this assembly or if it is an indirect reference that has been excluded by all the intermediate referencers.
     /// <para>
@@ -188,7 +178,7 @@ public sealed class CachedAssembly : IComparable<CachedAssembly>
     /// This is always empty when <see cref="AssemblyKind.Excluded"/>, <see cref="AssemblyKind.AutoSkipped"/> or <see cref="AssemblyKind.SystemSkipped"/>
     /// or when <see cref="IsInitialAssembly"/> is false.
     /// </summary>
-    public IReadOnlySet<CachedAssembly> PFeatures => _pFeatures;
+    public IReadOnlySet<CachedAssembly> Models => _models;
 
     /// <summary>
     /// Gets whether this assembly has been been discovered by the initial registration or is
@@ -197,9 +187,9 @@ public sealed class CachedAssembly : IComparable<CachedAssembly>
     public bool IsInitialAssembly => _isInitialAssembly;
 
     /// <summary>
-    /// Gets the types that this PFeature brings to the system.
+    /// Gets the types that this Model brings to the system.
     /// <para>
-    /// This is null if this assembly is not a PFeature or if it is not used.
+    /// This is null if this assembly is not a Model or if it is not used.
     /// </para>
     /// </summary>
     public IConfiguredTypeSet? Types => _types;
