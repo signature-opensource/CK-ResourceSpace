@@ -1,42 +1,59 @@
 # The App builder model
 
 `AppBuilderConfiguration` reads the `ckonf.json` of a "XXX.Builder" project, creates the `EngineConfiguration`
-(a BinPath per App) and writes the projections (the `appsettings.json` of the hosts).
+(a BinPath per App) and writes the projections (the `appsettings.json` of the hosts). When the repository has a
+central configuration (`CentralConfiguration`, see [below](#the-central-configuration)), the `ckonf.json` of each
+builder is itself a projection of it.
 
 ## `ckonf.json`: the configuration of the builder
 
 When the "XXX.Builder" project has a `ckonf.json`, it is the configuration of what the builder builds in one engine run:
-its Apps, keyed by their name, each one with the configuration of its host, and the aspects.
+its App (or its Apps) with the configuration of its host, and the aspects. A builder usually builds one App:
 
 ```jsonc
 {
   // The Builder aspects: they apply to the whole engine run.
   "Aspects": { "SqlServer": { "DefaultDatabaseConnectionString": "Server=.;Database=MyDB;Integrated Security=True" } },
-  "Apps": {
-    "Back1": {
-      "Types": [ "CK.Core.IActivityMonitor, CK.ActivityMonitor",
-                 { "Name": "CK.Core.IParallelLogger, CK.ActivityMonitor", "Kind": "IsContainerConfiguredService|IsScoped" } ],
-      // The aspects of this App.
-      "Aspects": { "Globalization": { "ActiveCultures": "fr, en" } },
-      "FullName": "Sample/MultiBinPath/$Back1/#Dev",
-      "Local": { ... },
-      "CK-Monitoring": { ... }
-    },
-    "Back2": { ... }
+  "App": {
+    // Optional: the name of the builder's folder without ".Builder" ("Front.Builder" builds the App "Front").
+    "Name": "Front",
+    // The aspects of this App.
+    "Aspects": { "Globalization": { "ActiveCultures": "fr, en" } },
+    "FullName": "Sample/Auth3/$Front/#Dev",
+    "Local": { ... },
+    "CK-Monitoring": { ... }
   }
 }
 ```
 
+A builder that builds several Apps (they share the Builder aspects: one database) lists them, each one with its name:
+
+```jsonc
+{
+  "Aspects": { "SqlServer": { ... } },
+  "Apps": [
+    {
+      "Name": "Back1",
+      "Types": [ "CK.Core.IActivityMonitor, CK.ActivityMonitor",
+                 { "Name": "CK.Core.IParallelLogger, CK.ActivityMonitor", "Kind": "IsContainerConfiguredService|IsScoped" } ],
+      "FullName": "Sample/MultiBinPath/$Back1/#Dev"
+    },
+    { "Name": "Back2", ... }
+  ]
+}
+```
+
+- **`"App"` XOR `"Apps"`:** one of them, not both. The names are unique (case insensitive).
 - **An App is a process:** the App "Back1" is the "../Back1.App" project (its code; its bin folder is the one of the
   builder: `bin/{Configuration}/{TargetFramework}`) and the "../Back1.Host" project (its host, the `ProjectPath` of
   its engine BinPath). `"AppProject"` and `"HostProject"` (relative to the `ckonf.json` folder) depart from this
   convention. A path that leaves the solution's folder is an error.
-- **The compile time keys of an App:** `Types` (an assembly qualified name, or `{ "Name", "Kind" }`),
+- **The compile time keys of an App:** `Name`, `Types` (an assembly qualified name, or `{ "Name", "Kind" }`),
   `ExcludedTypes`, `Assemblies`, `DiscoverAssembliesFromPath`, `CompileOption`, `GenerateSourceFiles`, `AppProject`,
   `HostProject` and `Aspects`. The other keys are the configuration of the host.
 - **The aspects are compile time,** at the root (the Builder aspects) and in an App (its aspects), keyed by their
   name (see [The aspects](#the-aspects) below). An aspect key that nothing reads is an error.
-- **The keys are case insensitive** (it is a configuration): a duplicate key (`Back1` and `back1`) is an error. The
+- **The keys are case insensitive** (it is a configuration): a duplicate key (`Local` and `local`) is an error. The
   order of the Apps means nothing: the engine receives them sorted by name.
 - **The host's `appsettings.json` is a projection of its App:** its content without the compile time keys (the ones
   above, and the ones the contributors declare, unless `"ProjectCompileKeys": true`), the keys that the contributors
@@ -44,6 +61,37 @@ its Apps, keyed by their name, each one with the configuration of its host, and 
   says so) and written only when it changes: edit the `ckonf.json`, not the projection.
 - **A `CKSetup.xml` may complete it** with the aspects that are not deduced yet and the global options of the engine,
   but no BinPath.
+
+## The central configuration
+
+A solution of several builders (several parties) may describe them once: an optional `ckonf.json` at the root of the
+repository (its git root, next to `#Dev`), read by `CentralConfiguration`. The `ckonf.json` of each of its builders is
+then generated from it (its first line says so, it is written only when it changes): edit the central file, not the
+projection.
+
+```jsonc
+{
+  "Domain": "Sample/Auth3",
+  // The defaults of every App: merged in each App, the App wins (the objects are merged).
+  "Defaults": { "App": { "Logging": { "LogLevel": { "Default": "Warning" } } } },
+  // The builders, keyed by the path of their folder.
+  "Builders": {
+    "Auth3/Auth3.Builder": { "Aspects": { "SqlServer": { ... } }, "App": { "Local": { ... } } },
+    "Front/Front.Builder": { "App": { "Local": { ... } } }
+  },
+  // The links between the parties (read by the AppIdentity contributor).
+  "Links": [ ... ]
+}
+```
+
+- **A builder is keyed by the path of its folder,** relative to the root, downward only (`..` is an error). Its entry is
+  exactly its `ckonf.json` (`"Aspects"`, `"App"` or `"Apps"`). The names of the Apps are unique in the whole solution.
+- **The other root keys belong to the contributors:** a contributor claims the keys it handles
+  (`CentralProjectionContext.ClaimKey`) and completes the Apps of the builder being projected
+  (`IAppBuilderContributor.ProjectFromCentral`). A root key that no contributor claims is an error. The meaning of what
+  they project is checked by the builder that reads its projection, as for a hand written `ckonf.json`.
+- **A builder of the repository that is not in `"Builders"` is an error** when the repository has a central
+  configuration.
 
 ## The aspects
 
@@ -69,7 +117,14 @@ The "SqlServer" aspect (`SqlServerAspect`, CK.SqlServer.Setup.Model) is a Builde
 ## The contributors' contract
 
 The engines deduce the engine configuration from the `ckonf.json`: they declare an `IAppBuilderContributor` with
-`[assembly: AppBuilderContributor( typeof( MyContributor ) )]`. It receives an `AppBuilderContext`:
+`[assembly: AppBuilderContributor( typeof( MyContributor ) )]`.
+
+- `IAppBuilderContributor.ProjectFromCentral( monitor, context )` is called first, when the repository has a central
+  configuration: the `CentralProjectionContext` gives the `CentralConfiguration` (its `Configuration` section, its
+  `Builders` and their `Apps`) and the Apps of the builder being projected, whose JSON (`CentralProjectedApp.Node`) the
+  contributor completes. Does nothing by default.
+
+Then it receives an `AppBuilderContext`:
 
 - `IAppBuilderContributor.Contribute( monitor, context )` reads the `context.Apps` (an `AppConfiguration`: its name,
   its projects, its `Configuration` section, its `Aspects`, its engine `BinPathConfiguration`) and the Builder

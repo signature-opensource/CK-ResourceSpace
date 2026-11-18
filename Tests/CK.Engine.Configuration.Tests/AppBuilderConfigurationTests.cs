@@ -34,21 +34,22 @@ public class AppBuilderConfigurationTests
         => AppBuilderConfiguration.Load( TestHelper.Monitor, builder, "bin/Debug/net10.0", ckSetup, out engine );
 
     [Test]
-    public void the_Apps_are_keyed_by_name_and_their_projects_follow_the_convention()
+    public void the_Apps_are_named_and_their_projects_follow_the_convention()
     {
         var builder = CreateSolution( """
             {
               // Comments are allowed.
-              "Apps": {
-                "Back2": {
+              "Apps": [
+                {
+                  "Name": "Back2",
                   "CompileOption": "Parse",
                   "DiscoverAssembliesFromPath": true,
                   "Types": [ "CK.Core.IActivityMonitor, CK.ActivityMonitor",
                              { "Name": "CK.Core.IParallelLogger, CK.ActivityMonitor", "Kind": "IsContainerConfiguredService|IsScoped" } ],
                   "FullName": "Sample/$Back2"
                 },
-                "Back1": { "FullName": "Sample/$Back1" }
-              }
+                { "Name": "Back1", "FullName": "Sample/$Back1" }
+              ]
             }
             """, "Back1", "Back2" );
         var root = builder.RemoveLastPart();
@@ -78,14 +79,13 @@ public class AppBuilderConfigurationTests
     {
         var builder = CreateSolution( """
             {
-              "Apps": {
-                "Front": {
+              "App": {
+                  "Name": "Front",
                   "Types": [ "CK.Core.IActivityMonitor, CK.ActivityMonitor" ],
                   "Aspects": { "Globalization": { "ActiveCultures": "fr" } },
                   "FullName": "Sample/$Front",
                   "Local": { "PartyClient": { "App": { "Type": "TypeScript", "Kind": "DefaultApp", "StaticFiles": { "AssetsMaxAge": "01:00:00" } } } },
                   "ConnectionStrings": { "Db": "Server=.;Database=Sample;Trust='yes'" }
-                }
               }
             }
             """, "Front" );
@@ -100,6 +100,7 @@ public class AppBuilderConfigurationTests
         var text = File.ReadAllText( file );
         text.ShouldStartWith( "// Generated from Backs.Builder/ckonf.json: do not edit." );
         text.ShouldNotContain( "Types" );
+        text.ShouldNotContain( "\"Name\"" );
         text.ShouldNotContain( "\"Type\"" );
         text.ShouldNotContain( "DefaultApp" );
         // The aspects are compile time.
@@ -123,13 +124,12 @@ public class AppBuilderConfigurationTests
     {
         var builder = CreateSolution( """
             {
-              "Apps": {
-                "Back": {
+              "App": {
+                  "Name": "Back",
                   "Logging": { "LogLevel": { "Default": "Warning" } },
                   "FullName": "Sample/$Back",
                   "Local": { "HttpEndpoint": true },
                   "Parties": [ { "PartyName": "$Front" } ]
-                }
               }
             }
             """, "Back" );
@@ -152,10 +152,9 @@ public class AppBuilderConfigurationTests
     {
         var builder = CreateSolution( """
             {
-              "Apps": {
-                "Back": {
+              "App": {
+                  "Name": "Back",
                   "Local": { "PartyClient": { "App": { "NgApp": { "Barrels": [ "a" ] }, "Hosting": { "DevServerPort": 4200, "UseDist": true }, "Other": { "Port": 1 } } } }
-                }
               }
             }
             """, "Back" );
@@ -177,7 +176,7 @@ public class AppBuilderConfigurationTests
     [Test]
     public void the_values_projected_by_an_aspect_are_root_sections_of_the_host()
     {
-        var builder = CreateSolution( """{ "Apps": { "Back": { "FullName": "Sample/$Back", "Logging": { "LogLevel": { "Default": "Warning" } } } } }""", "Back" );
+        var builder = CreateSolution( """{ "App": { "Name": "Back", "FullName": "Sample/$Back", "Logging": { "LogLevel": { "Default": "Warning" } } } }""", "Back" );
         var app = Load( builder, out _ ).ShouldNotBeNull();
         var back = app.Apps.Single();
         back.ProjectInSection( "FullName", "CK-AppIdentity" );
@@ -193,7 +192,7 @@ public class AppBuilderConfigurationTests
     [Test]
     public void a_projected_value_cannot_be_in_a_key_of_the_App()
     {
-        var builder = CreateSolution( """{ "Apps": { "Back": { "SqlServer": {} } } }""", "Back" );
+        var builder = CreateSolution( """{ "App": { "Name": "Back", "SqlServer": {} } }""", "Back" );
         var app = Load( builder, out _ ).ShouldNotBeNull();
         app.Apps[0].ProjectValue( "SqlServer:DefaultDatabaseConnectionString", "Server=.;Database=Db" );
         using( TestHelper.Monitor.CollectTexts( out var texts ) )
@@ -206,7 +205,7 @@ public class AppBuilderConfigurationTests
     [Test]
     public void a_section_in_which_keys_are_projected_cannot_be_a_key_of_the_App()
     {
-        var builder = CreateSolution( """{ "Apps": { "Back": { "FullName": "Sample/$Back", "CK-AppIdentity": {} } } }""", "Back" );
+        var builder = CreateSolution( """{ "App": { "Name": "Back", "FullName": "Sample/$Back", "CK-AppIdentity": {} } }""", "Back" );
         var app = Load( builder, out _ ).ShouldNotBeNull();
         app.Apps[0].ProjectInSection( "FullName", "CK-AppIdentity" );
         using( TestHelper.Monitor.CollectTexts( out var texts ) )
@@ -222,7 +221,7 @@ public class AppBuilderConfigurationTests
         var builder = CreateSolution( """
             {
               "Aspects": { "SqlServer": { "DefaultDatabaseConnectionString": "..." } },
-              "Apps": { "Back": { "Aspects": { "Globalization": { "ActiveCultures": "fr" }, "Unknown": {} } } }
+              "App": { "Name": "Back", "Aspects": { "Globalization": { "ActiveCultures": "fr" }, "Unknown": {} } }
             }
             """, "Back" );
         var app = Load( builder, out _ ).ShouldNotBeNull();
@@ -233,7 +232,7 @@ public class AppBuilderConfigurationTests
             app.CheckAspectsHandled( TestHelper.Monitor ).ShouldBeFalse();
             texts.Count( t => t.Contains( "No package handles the aspect" ) ).ShouldBe( 2 );
             texts.ShouldContain( t => t.Contains( "\"ckonf:Aspects:SqlServer\"" ) );
-            texts.ShouldContain( t => t.Contains( "\"ckonf:Apps:Back:Aspects:Unknown\"" ) );
+            texts.ShouldContain( t => t.Contains( "\"ckonf:App:Aspects:Unknown\"" ) );
         }
         app.Aspects.TryGetAspect( "SqlServer" ).ShouldNotBeNull();
         app.Apps[0].Aspects.TryGetAspect( "Unknown" ).ShouldNotBeNull();
@@ -246,7 +245,7 @@ public class AppBuilderConfigurationTests
         var builder = CreateSolution( """
             {
               "ProjectCompileKeys": true,
-              "Apps": { "Front": { "Types": [], "Local": { "Kind": "DefaultApp" } } }
+              "App": { "Name": "Front", "Types": [], "Local": { "Kind": "DefaultApp" } }
             }
             """, "Front" );
         var app = Load( builder, out _ ).ShouldNotBeNull();
@@ -259,10 +258,19 @@ public class AppBuilderConfigurationTests
     }
 
     [Test]
+    public void the_App_is_named_after_its_builder_by_default()
+    {
+        var builder = CreateSolution( """{ "App": { "FullName": "Sample/$Backs" } }""", "Backs" );
+        var app = Load( builder, out var engine ).ShouldNotBeNull();
+        app.Apps.Single().Name.ShouldBe( "Backs" );
+        engine.ShouldNotBeNull().FirstBinPath.Name.ShouldBe( "Backs" );
+    }
+
+    [Test]
     public void AppProject_and_HostProject_depart_from_the_convention()
     {
         var builder = CreateSolution( """
-            { "Apps": { "Back": { "AppProject": "../Other/Back.App", "HostProject": "../Back.Host" } } }
+            { "App": { "Name": "Back", "AppProject": "../Other/Back.App", "HostProject": "../Back.Host" } }
             """, "Back" );
         var root = builder.RemoveLastPart();
         Directory.CreateDirectory( root.Combine( "Other/Back.App" ) );
@@ -270,16 +278,21 @@ public class AppBuilderConfigurationTests
         app.Apps[0].AppProjectPath.ShouldBe( root.Combine( "Other/Back.App" ) );
     }
 
-    [TestCase( """{ "Apps": { "Back": { "HostProject": "../../Outside.Host" } } }""", "leaves the solution's folder" )]
-    [TestCase( """{ "Apps": { "Missing": {} } }""", "doesn't exist (by convention: 'Missing.App'" )]
-    [TestCase( """{ "Apps": { "Back": {}, "back": {} } }""", "Duplicate key 'Apps:back'" )]
-    [TestCase( """{ "Apps": [ { "Back": {} } ] }""", "must be an object" )]
-    [TestCase( """{ "Apps": {} }""", "at least one App" )]
-    [TestCase( """{ "Other": 1, "Apps": { "Back": {} } }""", "Unknown key 'Other'" )]
-    [TestCase( """{ "App": { "BinPaths": { "Back": {} } } }""", "Unknown key 'App'" )]
-    [TestCase( """{ "ProjectCompileKeys": "maybe", "Apps": { "Back": {} } }""", "Invalid \"ProjectCompileKeys\"" )]
-    [TestCase( """{ "Aspects": "SqlServer", "Apps": { "Back": {} } }""", "\"Aspects\" in" )]
-    [TestCase( """{ "Apps": { "Back": { "Aspects": "Globalization" } } }""", "\"ckonf:Apps:Back:Aspects\" must be an object" )]
+    [TestCase( """{ "App": { "Name": "Back", "HostProject": "../../Outside.Host" } }""", "leaves the solution's folder" )]
+    [TestCase( """{ "App": { "Name": "Missing" } }""", "doesn't exist (by convention: 'Missing.App'" )]
+    [TestCase( """{ "App": {} }""", "doesn't exist (by convention: 'Backs.App'" )]
+    [TestCase( """{ "Apps": [ { "Name": "Back" }, { "Name": "back" } ] }""", "Duplicate App name 'back'" )]
+    [TestCase( """{ "Apps": [ { "Name": "Back" }, {} ] }""", "\"ckonf:Apps:1\" in" )]
+    [TestCase( """{ "Apps": { "Back": {} } }""", "must be an array of Apps" )]
+    [TestCase( """{ "Apps": [] }""", "at least one" )]
+    [TestCase( """{ }""", "must define its App" )]
+    [TestCase( """{ "App": { "Name": "Back" }, "Apps": [ { "Name": "Back" } ] }""", "not both" )]
+    [TestCase( """{ "App": { "Name": "" } }""", "a non empty string is expected" )]
+    [TestCase( """{ "App": { "Name": "Back", "name": "Back" } }""", "Duplicate key 'App:name'" )]
+    [TestCase( """{ "Other": 1, "App": { "Name": "Back" } }""", "Unknown key 'Other'" )]
+    [TestCase( """{ "ProjectCompileKeys": "maybe", "App": { "Name": "Back" } }""", "Invalid \"ProjectCompileKeys\"" )]
+    [TestCase( """{ "Aspects": "SqlServer", "App": { "Name": "Back" } }""", "\"Aspects\" in" )]
+    [TestCase( """{ "App": { "Name": "Back", "Aspects": "Globalization" } }""", "\"ckonf:App:Aspects\" must be an object" )]
     public void invalid_configurations_are_errors( string ckonf, string expected )
     {
         var builder = CreateSolution( ckonf, "Back" );
@@ -294,7 +307,7 @@ public class AppBuilderConfigurationTests
     [Test]
     public void the_CKSetup_xml_brings_the_root_but_no_BinPath()
     {
-        var builder = CreateSolution( """{ "Apps": { "Back": {} } }""", "Back" );
+        var builder = CreateSolution( """{ "App": { "Name": "Back" } }""", "Back" );
         var withRoot = XElement.Parse( "<Setup><TraceDependencySorterInput>true</TraceDependencySorterInput></Setup>" );
         Load( builder, out var engine, withRoot ).ShouldNotBeNull();
         engine.ShouldNotBeNull().TraceDependencySorterInput.ShouldBeTrue();
