@@ -73,6 +73,14 @@ public sealed class CentralConfiguration
     public ImmutableConfigurationSection Configuration { get; }
 
     /// <summary>
+    /// Gets a copy of the JSON of a root key (case insensitive): its values keep their JSON kind, unlike the
+    /// <see cref="Configuration"/> (strings only).
+    /// </summary>
+    /// <param name="key">The root key.</param>
+    /// <returns>A copy of its JSON, or null if the key doesn't exist (or is null).</returns>
+    public JsonNode? GetJson( string key ) => _root[key]?.DeepClone();
+
+    /// <summary>
     /// Gets the builders, in the order of the file.
     /// </summary>
     public IReadOnlyList<CentralBuilder> Builders => _builders;
