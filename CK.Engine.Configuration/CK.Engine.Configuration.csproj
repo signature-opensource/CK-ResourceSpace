@@ -6,6 +6,6 @@
     <PackageReference Include="CK.Abstractions" Version="32.0.0-0.uc" />
     <PackageReference Include="CK.ActivityMonitor.SimpleSender" Version="28.0.0-0.cris-auth" />
     <!-- The App builder contract: the configuration sections of the builder ("ckonf.json"). -->
-    <PackageReference Include="CK.Configuration" Version="3.0.0-0.uc.0.ci.17" />
+    <PackageReference Include="CK.Configuration" Version="3.0.0-0.uc.0.ci.18" />
   </ItemGroup>
 </Project>
