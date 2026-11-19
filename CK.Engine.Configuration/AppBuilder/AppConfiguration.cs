@@ -22,6 +22,7 @@ public sealed class AppConfiguration
     readonly Dictionary<string, ConfigurationAnchor> _anchors;
     readonly HashSet<string> _initSections;
     readonly HashSet<string> _burntKeys;
+    readonly HashSet<string> _runValues;
 
     /// <summary>
     /// Initializes a new App. The builder creates them from "ckonf.json"; this is public for the tests of the contributors.
@@ -52,6 +53,7 @@ public sealed class AppConfiguration
         _anchors = new Dictionary<string, ConfigurationAnchor>( StringComparer.OrdinalIgnoreCase );
         _initSections = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
         _burntKeys = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
+        _runValues = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
     }
 
     /// <summary>
@@ -245,6 +247,23 @@ public sealed class AppConfiguration
     /// Gets the sections declared by <see cref="DeclareInitSection(string)"/>.
     /// </summary>
     public IReadOnlyCollection<string> InitSections => _initSections;
+
+    /// <summary>
+    /// Declares a value that its code can change while the application runs (<see cref="ConfigurationLevel.Run"/>): a
+    /// <c>"$LOCK"</c> can restrict it to <see cref="ConfigurationLevel.Init"/> or <see cref="ConfigurationLevel.Compile"/>.
+    /// Its section must be declared (<see cref="DeclareInitSection(string)"/>).
+    /// </summary>
+    /// <param name="path">The path of the value, relative to <see cref="Configuration"/>.</param>
+    public void DeclareRunValue( string path )
+    {
+        Throw.CheckNotNullOrWhiteSpaceArgument( path );
+        _runValues.Add( path );
+    }
+
+    /// <summary>
+    /// Gets the values declared by <see cref="DeclareRunValue(string)"/>.
+    /// </summary>
+    public IReadOnlyCollection<string> RunValues => _runValues;
 
     /// <summary>
     /// Gets the keys (relative to <see cref="Configuration"/>) whose values are burnt in the generated code: they are

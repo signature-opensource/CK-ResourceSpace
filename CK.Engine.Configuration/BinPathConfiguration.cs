@@ -180,6 +180,13 @@ public sealed partial class BinPathConfiguration
     /// </summary>
     public HashSet<string> CompiledLocks { get; } = new( StringComparer.OrdinalIgnoreCase );
 
+    /// <summary>
+    /// Gets the paths of the host's configuration of the values that their code can change while the application runs
+    /// (<see cref="ConfigurationLevel.Run"/>) but that the configuration restricts to <see cref="ConfigurationLevel.Init"/>
+    /// or <see cref="ConfigurationLevel.Compile"/>: the dynamic configuration initializes them, it doesn't change them.
+    /// </summary>
+    public HashSet<string> LockedRunValues { get; } = new( StringComparer.OrdinalIgnoreCase );
+
     #region Aspects
 
     /// <summary>

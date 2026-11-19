@@ -288,6 +288,11 @@ public sealed partial class AppBuilderConfiguration
             bool isInit = false;
             if( IsCompileKey( path ) ) capability = ConfigurationLevel.Compile;
             else if( IsUnder( path, "Aspects" ) ) capability = ConfigurationLevel.Init;
+            else if( _app.RunValues.Contains( path ) )
+            {
+                capability = ConfigurationLevel.Run;
+                isInit = true;
+            }
             else if( _app.InitSections.Any( s => IsUnder( path, s ) ) )
             {
                 capability = ConfigurationLevel.Init;
@@ -331,6 +336,11 @@ public sealed partial class AppBuilderConfiguration
                 _app.AddBurntKey( path );
             }
             b.CompiledLocks.UnionWith( _hostLocks );
+            // The run values restricted below Run: the dynamic configuration doesn't change them.
+            foreach( var path in _app.RunValues )
+            {
+                if( _locked.TryGetValue( path, out var l ) && l.Level < ConfigurationLevel.Run ) b.LockedRunValues.Add( _app.ToHostPath( path ) );
+            }
             // The values projected by the aspects from a locked value.
             var appPrefix = _root.Path + ":";
             foreach( var (hostPath, origin) in _app.ProjectedValueOrigins )

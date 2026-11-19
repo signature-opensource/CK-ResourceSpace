@@ -242,6 +242,64 @@ public class ConfigurationLockTests
         File.ReadAllText( front.HostProjectPath.AppendPart( "appsettings.json" ) ).ShouldNotContain( "Database=Db" );
     }
 
+    [ConfigurationSection( "Host" )]
+    public sealed class FakeHost
+    {
+        [ConfigurationLevel( ConfigurationLevel.Run )]
+        public int RunnerCount { get; set; }
+
+        [ConfigurationLevel( ConfigurationLevel.Run )]
+        public FakeOptions Options { get; } = new FakeOptions();
+
+        public int NotConfigured { get; set; }
+    }
+
+    public sealed class FakeOptions
+    {
+        [ConfigurationLevel( ConfigurationLevel.Run )]
+        public TimeSpan Delay { get; set; }
+    }
+
+    [Test]
+    public void the_run_properties_of_a_section_and_their_restrictions()
+    {
+        ConfigurationRunProperty.TryCollect( TestHelper.Monitor, typeof( FakeHost ), out var properties ).ShouldBeTrue();
+        properties.Select( p => p.Path ).ShouldBe( ["Host:RunnerCount", "Host:Options:Delay"] );
+        properties[1].ValueType.ShouldBe( typeof( TimeSpan ) );
+
+        var app = Load( """
+            {
+              "App": {
+                "Host": { "RunnerCount": 3, "Options": { "Delay": "00:00:05" } },
+                "$LOCK": { "Host:Options:Delay": "Init" }
+              }
+            }
+            """ );
+        var front = app.Apps.Single();
+        front.DeclareInitSection( "Host" );
+        foreach( var p in properties ) front.DeclareRunValue( p.Path );
+        app.ApplyLocks( TestHelper.Monitor ).ShouldBeTrue();
+        // Restricted to Init: the dynamic configuration doesn't change it.
+        front.BinPathConfiguration.LockedRunValues.ShouldBe( ["Host:Options:Delay"] );
+        front.BinPathConfiguration.CompiledValues.ShouldBeEmpty();
+
+        // "Run" is accepted on a run value (it changes nothing), "Compile" burns it.
+        var other = Load( """
+            {
+              "App": {
+                "Host": { "RunnerCount": 3 },
+                "$LOCK": { "Host:RunnerCount": "Run", "Host:Options:Delay": "Compile" }
+              }
+            }
+            """ );
+        var o = other.Apps.Single();
+        o.DeclareInitSection( "Host" );
+        foreach( var p in properties ) o.DeclareRunValue( p.Path );
+        other.ApplyLocks( TestHelper.Monitor ).ShouldBeTrue();
+        o.BinPathConfiguration.LockedRunValues.ShouldBe( ["Host:Options:Delay"] );
+        o.BinPathConfiguration.CompiledValues.ShouldContainKeyAndValue( "Host:Options:Delay", null );
+    }
+
     [TestCase( "Parties:[*]:Address", "Parties:3:Address", true )]
     [TestCase( "Parties:[*]:Address", "Parties:X:Address", false )]
     [TestCase( "Endpoints:*:Url", "endpoints:Http:url", true )]
