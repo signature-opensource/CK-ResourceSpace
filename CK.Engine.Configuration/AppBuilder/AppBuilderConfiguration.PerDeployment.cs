@@ -38,8 +38,10 @@ public sealed partial class AppBuilderConfiguration
             {
                 foreach( var a in app.Anchors.Where( a => a.Kinds.Contains( parts[0] ) ) )
                 {
-                    foreach( var objectPath in a.Fallbacks.Prepend( a.Path ) )
+                    foreach( var anchorPath in a.Fallbacks.Prepend( a.Path ) )
                     {
+                        // An anchor in an array ("Parties:0") is any item: a pattern has no index.
+                        var objectPath = string.Join( ':', anchorPath.Split( ':' ).Select( s => ConfigurationPathPattern.IsIndex( s ) ? "[*]" : s ) );
                         var k = (objectPath.Length == 0 ? $"{section}:{parts[1]}" : $"{objectPath}:{section}:{parts[1]}", source);
                         if( !keys.Contains( k ) ) keys.Add( k );
                     }

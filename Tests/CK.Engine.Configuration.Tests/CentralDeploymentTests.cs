@@ -191,7 +191,7 @@ public class CentralDeploymentTests
                                                           app,
                                                           [new PackageConfigurationPerDeployment( "HttpEndpointFeatureDriver", ["HttpEndpoint"], "Party:Urls" )],
                                                           out var keys ).ShouldBeTrue();
-        keys.Select( k => k.Pattern ).ShouldBe( ["StoreRootPath", "Local:HttpEndpoint:Urls", "Defaults:HttpEndpoint:Urls", "Parties:0:HttpEndpoint:Urls"] );
+        keys.Select( k => k.Pattern ).ShouldBe( ["StoreRootPath", "Local:HttpEndpoint:Urls", "Defaults:HttpEndpoint:Urls", "Parties:[*]:HttpEndpoint:Urls"] );
         AppBuilderConfiguration.CollectPerDeploymentKeys( TestHelper.Monitor, app, [new PackageConfigurationPerDeployment( "X", ["X"], "Urls" )], out _ )
                                .ShouldBeFalse();
     }
