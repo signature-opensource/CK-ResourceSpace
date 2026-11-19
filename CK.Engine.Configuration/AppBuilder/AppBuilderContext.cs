@@ -1,5 +1,6 @@
 using CK.Core;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace CK.Setup;
 
@@ -15,13 +16,38 @@ public sealed class AppBuilderContext
     /// <param name="engineConfiguration">The engine configuration.</param>
     /// <param name="apps">The Apps of the builder, sorted by name.</param>
     /// <param name="aspects">The Builder aspects (the "Aspects" at the root of "ckonf.json"). Defaults to none.</param>
-    public AppBuilderContext( EngineConfiguration engineConfiguration, IReadOnlyList<AppConfiguration> apps, AppAspects? aspects = null )
+    /// <param name="devSecrets">
+    /// The secrets of the development (see <see cref="AppBuilderConfiguration.TryLoadDevSecrets"/>). Defaults to none.
+    /// </param>
+    public AppBuilderContext( EngineConfiguration engineConfiguration,
+                              IReadOnlyList<AppConfiguration> apps,
+                              AppAspects? aspects = null,
+                              IReadOnlyDictionary<string, string>? devSecrets = null )
     {
         Throw.CheckNotNullArgument( engineConfiguration );
         Throw.CheckNotNullArgument( apps );
         EngineConfiguration = engineConfiguration;
         Apps = apps;
         Aspects = aspects ?? new AppAspects( null );
+        _devSecrets = devSecrets ?? new Dictionary<string, string>();
+    }
+
+    readonly IReadOnlyDictionary<string, string> _devSecrets;
+
+    /// <summary>
+    /// Resolves a secret (see <see cref="ConfigurationSecret"/>) for an engine that needs its value at build time (the
+    /// setup of a development database): from the secrets of the development (the "#Dev/Secrets.json" file of the
+    /// solution). The value must never be projected nor burnt: the handle is.
+    /// </summary>
+    /// <param name="monitor">The monitor to use.</param>
+    /// <param name="name">The name of the secret.</param>
+    /// <param name="value">The value on success.</param>
+    /// <returns>True on success, false when the secret is missing (the error is logged).</returns>
+    public bool TryResolveSecret( IActivityMonitor monitor, string name, [NotNullWhen( true )] out string? value )
+    {
+        if( _devSecrets.TryGetValue( name, out value ) ) return true;
+        monitor.Error( $"The secret '{name}' is required by the build: its value is missing from \"#Dev/{ConfigurationSecret.DevFileName}\" (its root is the content of the \"{ConfigurationSecret.SectionName}\" section)." );
+        return false;
     }
 
     /// <summary>

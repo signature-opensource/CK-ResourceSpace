@@ -23,6 +23,7 @@ public sealed class AppConfiguration
     readonly HashSet<string> _initSections;
     readonly HashSet<string> _burntKeys;
     readonly HashSet<string> _runValues;
+    readonly HashSet<string> _secretKeys;
 
     /// <summary>
     /// Initializes a new App. The builder creates them from "ckonf.json"; this is public for the tests of the contributors.
@@ -45,6 +46,7 @@ public sealed class AppConfiguration
         BinPathConfiguration = binPathConfiguration;
         Aspects = new AppAspects( configuration.TryGetSection( "Aspects" ) );
         _compileKeys = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
+        _secretKeys = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
         _declarationKeys = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
         _projectedSections = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase );
         _projectedValues = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase );
@@ -119,6 +121,26 @@ public sealed class AppConfiguration
     /// Gets the compile time keys declared by <see cref="AddCompileKey(string)"/>.
     /// </summary>
     public IReadOnlyCollection<string> CompileKeys => _compileKeys;
+
+    /// <summary>
+    /// Declares that the values at a path are secrets (see <see cref="ConfigurationSecret"/>): their configuration should
+    /// be a handle. For the readers that read their keys by hand; a configurable type declares its secrets with
+    /// <see cref="ConfigurationSecretAttribute"/>. See <see cref="AppBuilderConfiguration.CheckSecrets"/>.
+    /// </summary>
+    /// <param name="path">
+    /// The path of the values, relative to <see cref="Configuration"/> (with ':' separators): it may contain the patterns
+    /// of the configuration paths (<c>*</c> for any member, <c>[*]</c> for any item).
+    /// </param>
+    public void AddSecretKey( string path )
+    {
+        Throw.CheckNotNullOrWhiteSpaceArgument( path );
+        _secretKeys.Add( path );
+    }
+
+    /// <summary>
+    /// Gets the secret keys declared by <see cref="AddSecretKey(string)"/>.
+    /// </summary>
+    public IReadOnlyCollection<string> SecretKeys => _secretKeys;
 
     /// <summary>
     /// Declares that a key of the <see cref="Configuration"/> is projected in a section of the host's "appsettings.json":

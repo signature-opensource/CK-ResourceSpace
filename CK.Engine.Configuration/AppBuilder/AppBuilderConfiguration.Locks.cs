@@ -99,6 +99,8 @@ public sealed partial class AppBuilderConfiguration
         {
             public ConfigurationLevel Level;
             public string? Value;
+            // The name of the secret when the value is a handle ({ "$SECRET": "<Name>" }).
+            public string? Handle;
             public bool IsRequired;
             public bool IsInit;
         }
@@ -221,33 +223,48 @@ public sealed partial class AppBuilderConfiguration
             {
                 var full = Combine( anchor.Path, c );
                 var own = Value( full );
+                var ownHandle = Handle( full );
                 var resolved = own;
-                if( resolved == null )
+                var resolvedHandle = ownHandle;
+                if( resolved == null && resolvedHandle == null )
                 {
                     foreach( var f in anchor.Fallbacks )
                     {
-                        if( Value( Combine( f, c ) ) is string v )
+                        var fc = Combine( f, c );
+                        if( Value( fc ) is string v )
                         {
                             resolved = v;
+                            break;
+                        }
+                        if( Handle( fc ) is string h )
+                        {
+                            resolvedHandle = h;
                             break;
                         }
                     }
                 }
                 if( required != null )
                 {
+                    if( ownHandle != null )
+                    {
+                        _monitor.Error( $"\"{_root.Path}:{full}\" is the secret '{ownHandle}': {source} requires '{required}' here." );
+                        _success = false;
+                        continue;
+                    }
                     if( own != null && !own.Equals( required, StringComparison.OrdinalIgnoreCase ) )
                     {
                         _monitor.Error( $"\"{_root.Path}:{full}\" is '{own}': {source} requires '{required}' here." );
                         _success = false;
                         continue;
                     }
-                    if( own == null && resolved != null && !resolved.Equals( required, StringComparison.OrdinalIgnoreCase ) )
+                    if( own == null && (resolved != null || resolvedHandle != null) && !required.Equals( resolved, StringComparison.OrdinalIgnoreCase ) )
                     {
-                        _monitor.Info( $"\"{_root.Path}:{full}\" would be '{resolved}' (a \"Defaults\" above it): {source} requires '{required}' here." );
+                        _monitor.Info( $"\"{_root.Path}:{full}\" would be '{resolved ?? $"the secret '{resolvedHandle}'"}' (a \"Defaults\" above it): {source} requires '{required}' here." );
                     }
                     resolved = required;
+                    resolvedHandle = null;
                 }
-                isInit |= Record( full, level, resolved, required != null, source );
+                isInit |= Record( full, level, resolved, resolvedHandle, required != null, source );
             }
             if( isInit && level == ConfigurationLevel.Compile ) _hostLocks.Add( _app.ToHostPath( Combine( anchor.Path, pattern.Text ) ) );
         }
@@ -276,13 +293,13 @@ public sealed partial class AppBuilderConfiguration
             foreach( var c in candidates )
             {
                 var full = Combine( objectPath, c );
-                isInit |= Record( full, level, Value( full ), false, source );
+                isInit |= Record( full, level, Value( full ), Handle( full ), false, source );
             }
             if( isInit && level == ConfigurationLevel.Compile ) _hostLocks.Add( _app.ToHostPath( Combine( objectPath, pattern.Text ) ) );
         }
 
         // Returns true when the value is an Init value of the host (not a compile key nor an aspect's value).
-        bool Record( string path, ConfigurationLevel level, string? value, bool isRequired, string source )
+        bool Record( string path, ConfigurationLevel level, string? value, string? handle, bool isRequired, string source )
         {
             ConfigurationLevel capability;
             bool isInit = false;
@@ -316,12 +333,13 @@ public sealed partial class AppBuilderConfiguration
                 if( isRequired )
                 {
                     l.Value = value;
+                    l.Handle = null;
                     l.IsRequired = true;
                 }
             }
             else
             {
-                _locked.Add( path, new Locked { Level = level, Value = value, IsRequired = isRequired, IsInit = isInit } );
+                _locked.Add( path, new Locked { Level = level, Value = value, Handle = handle, IsRequired = isRequired, IsInit = isInit } );
             }
             return isInit;
         }
@@ -332,7 +350,9 @@ public sealed partial class AppBuilderConfiguration
             foreach( var (path, l) in _locked.OrderBy( kv => kv.Key, StringComparer.OrdinalIgnoreCase ) )
             {
                 if( l.Level != ConfigurationLevel.Compile || !l.IsInit ) continue;
-                b.CompiledValues[_app.ToHostPath( path )] = l.Value;
+                // A secret burns its handle, never its value: the host resolves it when it starts.
+                if( l.Handle != null ) b.CompiledValues[$"{_app.ToHostPath( path )}:{ConfigurationSecret.HandleKey}"] = l.Handle;
+                else b.CompiledValues[_app.ToHostPath( path )] = l.Value;
                 _app.AddBurntKey( path );
             }
             b.CompiledLocks.UnionWith( _hostLocks );
@@ -343,8 +363,10 @@ public sealed partial class AppBuilderConfiguration
             }
             // The values projected by the aspects from a locked value.
             var appPrefix = _root.Path + ":";
-            foreach( var (hostPath, origin) in _app.ProjectedValueOrigins )
+            foreach( var (hostPath, projectedOrigin) in _app.ProjectedValueOrigins )
             {
+                // A projected handle ("...:$SECRET") is locked by the locks of the value it replaces.
+                var origin = ConfigurationSecret.IsHandlePath( projectedOrigin, out var valueOrigin ) ? valueOrigin : projectedOrigin;
                 bool burnt = false;
                 if( origin.StartsWith( appPrefix, StringComparison.OrdinalIgnoreCase )
                     && _locked.TryGetValue( origin[appPrefix.Length..], out var l )
@@ -390,6 +412,8 @@ public sealed partial class AppBuilderConfiguration
 
         string? Value( string path ) => _root.TryGetSection( path )?.Value;
 
+        string? Handle( string path ) => _root.TryGetSection( $"{path}:{ConfigurationSecret.HandleKey}" )?.Value;
+
         static string Combine( string a, string b ) => a.Length == 0 ? b : $"{a}:{b}";
 
         static IEnumerable<(string Path, string Value)> Leaves( ImmutableConfigurationSection s, string prefix )
@@ -397,7 +421,8 @@ public sealed partial class AppBuilderConfiguration
             foreach( var c in s.GetChildren() )
             {
                 var path = Combine( prefix, c.Key );
-                if( c.Value != null ) yield return (path, c.Value);
+                // A handle ({ "$SECRET": "<Name>" }) is the value of its section.
+                if( c.Value != null ) yield return ConfigurationSecret.IsHandlePath( path, out var valuePath ) ? (valuePath, c.Value) : (path, c.Value);
                 foreach( var l in Leaves( c, path ) ) yield return l;
             }
         }

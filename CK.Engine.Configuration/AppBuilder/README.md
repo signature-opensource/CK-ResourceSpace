@@ -151,6 +151,35 @@ contributors) are `Init`. The configuration can only lower it:
 
 The builder applies them (`AppBuilderConfiguration.ApplyLocks`) once the contributors have contributed.
 
+## The secrets
+
+A secret is never written in a configuration file: its place holds a **handle**, the name of the secret
+(`ConfigurationSecret`, CK.ResourceSpace.Abstractions), that the host resolves when it starts:
+
+```jsonc
+"Oidc": { "Google": { "ClientId": "...", "ClientSecret": { "$SECRET": "Google:ClientSecret" } } }
+```
+
+- **A handle is a value like another one:** in the flattened configuration it is the key `"<path>:$SECRET"` whose value
+  is the name. It is projected as is in the host's `appsettings.json`; a `"$LOCK"` to `Compile` on the value burns the
+  handle, never a value (the name is fixed by the build, the value is still read at start). An aspect projects a
+  handle with `AppConfiguration.ProjectValue( "<path>:$SECRET", name, "<origin>:$SECRET" )`: the `"$LOCK"` of the value it
+  replaces applies.
+- **A name** is made of segments separated by `:` made of letters, digits, `_` and `-` (`Duende:ClientSecret`); the
+  handle is the only key of its object. Anything else is an error.
+- **The value** is the configuration key `Secrets:<Name>` of the host: see CK.AppHost. In development, the solution's
+  `#Dev/Secrets.json` holds them (its root is the content of the `Secrets` section: `{ "Google": { "ClientSecret": "..." } }`).
+- **The code declares what is a secret:** `[ConfigurationSecret( "Party:Oidc:*:ClientSecret" )]` on a configurable type
+  (built like a `[ConfigurationLock]` path: a kind of anchor, then a path relative to the type's section, with
+  patterns), `AppConfiguration.AddSecretKey( path )` for a reader that reads its keys by hand. A plain value where a
+  secret is declared is reported: the development configuration accepts it (a known test secret, an Integrated Security
+  connection string).
+- **An engine that needs the value at build time** (the setup of a development database) resolves it with
+  `AppBuilderContext.TryResolveSecret`, from the `#Dev/Secrets.json` file (`AppBuilderConfiguration.TryLoadDevSecrets`):
+  the value is never projected nor burnt.
+
+The builder checks them (`AppBuilderConfiguration.CheckSecrets`) with the restrictions.
+
 ## The contributors' contract
 
 The engines deduce the engine configuration from the `ckonf.json`: they declare an `IAppBuilderContributor` with
