@@ -30,7 +30,7 @@ public class ConfigurationLockTests
 
     static AppBuilderConfiguration Load( string ckonf )
     {
-        var builder = CreateSolution( ckonf, "Front" );
+        var builder = CreateSolution( ckonf, "Backs" );
         return AppBuilderConfiguration.Load( TestHelper.Monitor, builder, "bin/Debug/net10.0", null, out _ ).ShouldNotBeNull();
     }
 
