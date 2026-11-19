@@ -141,8 +141,11 @@ contributors) are `Init`. The configuration can only lower it:
   whose values may come from fallbacks (the "Defaults" above a party). A `"$LOCK"` in an anchor, or in one of its
   fallbacks, locks the value of each anchor at its own path: its own value, otherwise the one of its first fallback.
 - **The restrictions of the packages:** `[ConfigurationLock( "OpenedRemoteTemplate:AutoTrustKey", ConfigurationLevel.Compile, Value = "Never" )]`
-  on a configurable type whose section is a key of a party: the first segment is a kind of anchor, the rest is relative
-  to the type's section. With a `Value`, another configured value is an error and an absent one is burnt with it.
+  on a configurable type: the first segment is a kind of anchor, the rest is relative to the type's section. The section
+  of a type is its configurable name (a feature in a party) unless a contributor resolves it
+  (`IAppBuilderContributor.ResolveSections`): an option is in the section of its owner, in each concrete owner of the App
+  (the AppIdentity contributor resolves the options of the features and of the client features, the clients are the
+  "Client" anchors). With a `Value`, another configured value is an error and an absent one is burnt with it.
 - **A Builder aspect's `"$LOCK"`** locks the values it projects in the hosts (`AppConfiguration.ProjectValue( path, value, origin )`).
 - **The errors:** an invalid level or pattern, a value that no code declares, a level above the capability of the code.
 

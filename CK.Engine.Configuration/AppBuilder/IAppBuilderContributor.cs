@@ -1,4 +1,6 @@
 using CK.Core;
+using System;
+using System.Collections.Generic;
 
 namespace CK.Setup;
 
@@ -42,4 +44,16 @@ public interface IAppBuilderContributor
     /// <param name="context">The context.</param>
     /// <returns>True on success, false on error (errors must be logged).</returns>
     bool OnContributed( IActivityMonitor monitor, AppBuilderContext context ) => true;
+
+    /// <summary>
+    /// Resolves the sections of a configurable type, relative to the anchors that a <see cref="ConfigurationLockAttribute"/>
+    /// on it targets: the section of a type is its configurable name by default (a feature in a party), but the section
+    /// of an option is in the one of its owner, and an option of a base owner applies to every concrete owner of the App
+    /// (several sections). Called by the builder for the types that declare a restriction; the first contributor that
+    /// resolves a type wins. Returns null by default (the contributor doesn't know the type).
+    /// </summary>
+    /// <param name="configurableType">The configurable type.</param>
+    /// <param name="appTypes">The configurable types of the App.</param>
+    /// <returns>The paths of the sections of the type (':' separated), or null.</returns>
+    IEnumerable<string>? ResolveSections( Type configurableType, IReadOnlyCollection<Type> appTypes ) => null;
 }

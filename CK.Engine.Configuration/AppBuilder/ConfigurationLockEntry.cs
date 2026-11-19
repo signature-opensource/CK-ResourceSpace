@@ -121,6 +121,9 @@ public sealed class ConfigurationLockEntry
 /// the builder gives them to <see cref="AppBuilderConfiguration.ApplyLocks"/>.
 /// </summary>
 /// <param name="TypeName">The name of the type that declares it (for the errors).</param>
-/// <param name="SectionName">The name of the section of the type in a party (its configurable name).</param>
+/// <param name="Sections">
+/// The paths of the sections of the type relative to an anchor: its configurable name for a feature, the section in
+/// each of its owners for an option (see <see cref="IAppBuilderContributor.ResolveSections"/>).
+/// </param>
 /// <param name="Attribute">The attribute.</param>
-public sealed record PackageConfigurationLock( string TypeName, string SectionName, ConfigurationLockAttribute Attribute );
+public sealed record PackageConfigurationLock( string TypeName, IReadOnlyList<string> Sections, ConfigurationLockAttribute Attribute );

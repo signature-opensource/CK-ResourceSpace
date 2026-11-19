@@ -164,12 +164,6 @@ public sealed partial class AppBuilderConfiguration
                 _success = false;
                 return;
             }
-            if( !ConfigurationPathPattern.TryParse( $"{p.SectionName}:{parts[1]}", out var pattern, out var error ) )
-            {
-                _monitor.Error( $"Invalid {source}: {error}." );
-                _success = false;
-                return;
-            }
             var level = p.Attribute.Level;
             if( !Enum.IsDefined( level ) )
             {
@@ -177,15 +171,25 @@ public sealed partial class AppBuilderConfiguration
                 _success = false;
                 return;
             }
-            if( p.Attribute.Value != null && (level != ConfigurationLevel.Compile || !pattern.IsLiteral) )
+            // One restriction per section of the type (an option of a base owner is in each concrete owner).
+            foreach( var section in p.Sections )
             {
-                _monitor.Error( $"Invalid {source}: a required value is a Compile restriction of one value (no wildcard)." );
-                _success = false;
-                return;
-            }
-            foreach( var a in _anchors.Values.Where( a => a.Kinds.Contains( parts[0] ) ) )
-            {
-                LockAnchor( a, pattern, level, source, p.Attribute.Value );
+                if( !ConfigurationPathPattern.TryParse( $"{section}:{parts[1]}", out var pattern, out var error ) )
+                {
+                    _monitor.Error( $"Invalid {source}: {error}." );
+                    _success = false;
+                    return;
+                }
+                if( p.Attribute.Value != null && (level != ConfigurationLevel.Compile || !pattern.IsLiteral) )
+                {
+                    _monitor.Error( $"Invalid {source}: a required value is a Compile restriction of one value (no wildcard)." );
+                    _success = false;
+                    return;
+                }
+                foreach( var a in _anchors.Values.Where( a => a.Kinds.Contains( parts[0] ) ) )
+                {
+                    LockAnchor( a, pattern, level, source, p.Attribute.Value );
+                }
             }
         }
 

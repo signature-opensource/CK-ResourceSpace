@@ -125,7 +125,7 @@ public class ConfigurationLockTests
         var front = app.Apps.Single();
         DeclareParty( front );
         var restriction = new PackageConfigurationLock( "KeyManagementFeatureDriver",
-                                                        "KeyManagement",
+                                                        ["KeyManagement"],
                                                         new ConfigurationLockAttribute( "OpenedRemoteTemplate:AutoTrustKey", ConfigurationLevel.Compile ) { Value = "Never" } );
         app.ApplyLocks( TestHelper.Monitor, a => [restriction] ).ShouldBeTrue();
         // The "Defaults" value ("Once") is replaced on the Opened template only.
@@ -149,6 +149,33 @@ public class ConfigurationLockTests
             invalid.ApplyLocks( TestHelper.Monitor, _ => [restriction] ).ShouldBeFalse();
             texts.ShouldContain( t => t.Contains( "\"ckonf:App:Parties:0:KeyManagement:AutoTrustKey\" is 'Always'" ) && t.Contains( "requires 'Never'" ) );
         }
+    }
+
+    [Test]
+    public void a_package_restriction_of_an_option_applies_in_each_section_of_its_owners()
+    {
+        var app = Load( """
+            {
+              "App": {
+                "FullName": "Sample/$Front",
+                "Local": { "HttpEndpoint": { "ForwardedHeaders": { "KnownProxies": [ "10.0.0.1" ] } }, "Other": { "ForwardedHeaders": { "ForwardLimit": "2" } } }
+              }
+            }
+            """ );
+        var front = app.Apps.Single();
+        front.ProjectInSection( "Local", "CK-AppIdentity" );
+        front.DeclareInitSection( "Local" );
+        front.DeclareAnchor( "Local", ["Party"] );
+        // An option of two owners: its restriction applies in the two sections.
+        var restriction = new PackageConfigurationLock( "ForwardedHeadersOption",
+                                                        ["HttpEndpoint:ForwardedHeaders", "Other:ForwardedHeaders"],
+                                                        new ConfigurationLockAttribute( "Party:ForwardLimit", ConfigurationLevel.Compile ) );
+        app.ApplyLocks( TestHelper.Monitor, a => [restriction] ).ShouldBeTrue();
+        var values = front.BinPathConfiguration.CompiledValues;
+        values.Count.ShouldBe( 2 );
+        values["CK-AppIdentity:Local:Other:ForwardedHeaders:ForwardLimit"].ShouldBe( "2" );
+        // Absent in the HttpEndpoint: its absence is burnt (a literal path).
+        values.ShouldContainKeyAndValue( "CK-AppIdentity:Local:HttpEndpoint:ForwardedHeaders:ForwardLimit", null );
     }
 
     [Test]
