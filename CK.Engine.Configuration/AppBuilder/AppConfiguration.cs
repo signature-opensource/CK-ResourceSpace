@@ -1,6 +1,7 @@
 using CK.Core;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace CK.Setup;
 
@@ -16,6 +17,11 @@ public sealed class AppConfiguration
     readonly HashSet<string> _declarationKeys;
     readonly Dictionary<string, string> _projectedSections;
     readonly Dictionary<string, string> _projectedValues;
+    readonly Dictionary<string, string> _projectedValueOrigins;
+    readonly List<ConfigurationLockEntry> _locks;
+    readonly Dictionary<string, ConfigurationAnchor> _anchors;
+    readonly HashSet<string> _initSections;
+    readonly HashSet<string> _burntKeys;
 
     /// <summary>
     /// Initializes a new App. The builder creates them from "ckonf.json"; this is public for the tests of the contributors.
@@ -41,6 +47,11 @@ public sealed class AppConfiguration
         _declarationKeys = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
         _projectedSections = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase );
         _projectedValues = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase );
+        _projectedValueOrigins = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase );
+        _locks = new List<ConfigurationLockEntry>();
+        _anchors = new Dictionary<string, ConfigurationAnchor>( StringComparer.OrdinalIgnoreCase );
+        _initSections = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
+        _burntKeys = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
     }
 
     /// <summary>
@@ -149,9 +160,111 @@ public sealed class AppConfiguration
     }
 
     /// <summary>
+    /// Projects a value at a path of the host's "appsettings.json" (see <see cref="ProjectValue(string, string)"/>) from
+    /// a value of the "ckonf.json": when a <c>"$LOCK"</c> restricts this origin to <see cref="ConfigurationLevel.Compile"/>,
+    /// the value is burnt in the generated code instead of being written in the host's file.
+    /// </summary>
+    /// <param name="path">The path in the host's configuration (':' separated).</param>
+    /// <param name="value">The value.</param>
+    /// <param name="origin">The configuration path of the value it comes from ("ckonf:Aspects:SqlServer:DefaultDatabaseConnectionString").</param>
+    public void ProjectValue( string path, string value, string origin )
+    {
+        Throw.CheckNotNullOrWhiteSpaceArgument( origin );
+        ProjectValue( path, value );
+        _projectedValueOrigins[path] = origin;
+    }
+
+    /// <summary>
     /// Gets the values projected by <see cref="ProjectValue(string, string)"/>, by path.
     /// </summary>
     public IReadOnlyDictionary<string, string> ProjectedValues => _projectedValues;
+
+    /// <summary>
+    /// Gets the origins of the projected values (see <see cref="ProjectValue(string, string, string)"/>), by path.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> ProjectedValueOrigins => _projectedValueOrigins;
+
+    /// <summary>
+    /// Gets the entries of the <c>"$LOCK"</c> of this App (removed from its <see cref="Configuration"/>).
+    /// </summary>
+    public IReadOnlyList<ConfigurationLockEntry> Locks => _locks;
+
+    /// <summary>
+    /// Adds an entry of a <c>"$LOCK"</c> of this App. The builder adds the ones of the "ckonf.json"; this is public for
+    /// the tests.
+    /// </summary>
+    /// <param name="entry">The entry.</param>
+    public void AddLock( ConfigurationLockEntry entry )
+    {
+        Throw.CheckNotNullArgument( entry );
+        _locks.Add( entry );
+    }
+
+    /// <summary>
+    /// Declares an anchor: a section of a kind (a party: "Party", "Remote", "OpenedRemoteTemplate"...) whose values may
+    /// come from fallback sections (the "Defaults" above a party). A <c>"$LOCK"</c> in an anchor, or in one of its
+    /// fallbacks, locks the value of the anchor: its own value, otherwise the one of its first fallback that has it. The
+    /// restrictions of the packages (<see cref="ConfigurationLockAttribute"/>) target the anchors by their kinds.
+    /// Declaring a path twice adds its kinds.
+    /// </summary>
+    /// <param name="path">The path of the anchor, relative to <see cref="Configuration"/>.</param>
+    /// <param name="kinds">The kinds of the anchor.</param>
+    /// <param name="fallbacks">The fallbacks of the values of the anchor (relative to <see cref="Configuration"/>), the nearest first.</param>
+    public void DeclareAnchor( string path, IEnumerable<string> kinds, IEnumerable<string>? fallbacks = null )
+    {
+        Throw.CheckNotNullOrWhiteSpaceArgument( path );
+        Throw.CheckNotNullArgument( kinds );
+        if( _anchors.TryGetValue( path, out var a ) )
+        {
+            a.AddKinds( kinds );
+        }
+        else
+        {
+            _anchors.Add( path, new ConfigurationAnchor( path, kinds, fallbacks ) );
+        }
+    }
+
+    /// <summary>
+    /// Gets the anchors declared by <see cref="DeclareAnchor(string, IEnumerable{string}, IEnumerable{string}?)"/>.
+    /// </summary>
+    public IReadOnlyCollection<ConfigurationAnchor> Anchors => _anchors.Values;
+
+    /// <summary>
+    /// Declares a section that the code reads when the application starts (<see cref="ConfigurationLevel.Init"/>): a
+    /// <c>"$LOCK"</c> can restrict its values to <see cref="ConfigurationLevel.Compile"/>. A <c>"$LOCK"</c> on a value
+    /// that is in no declared section (and that is not a compile key) is an error.
+    /// </summary>
+    /// <param name="path">The path of the section, relative to <see cref="Configuration"/>.</param>
+    public void DeclareInitSection( string path )
+    {
+        Throw.CheckNotNullOrWhiteSpaceArgument( path );
+        _initSections.Add( path );
+    }
+
+    /// <summary>
+    /// Gets the sections declared by <see cref="DeclareInitSection(string)"/>.
+    /// </summary>
+    public IReadOnlyCollection<string> InitSections => _initSections;
+
+    /// <summary>
+    /// Gets the keys (relative to <see cref="Configuration"/>) whose values are burnt in the generated code: they are
+    /// not written in the host's "appsettings.json".
+    /// </summary>
+    public IReadOnlyCollection<string> BurntKeys => _burntKeys;
+
+    internal void AddBurntKey( string path ) => _burntKeys.Add( path );
+
+    /// <summary>
+    /// Gets the path of a key of the <see cref="Configuration"/> in the host's configuration: in its section when its
+    /// first segment is projected in one (see <see cref="ProjectInSection(string, string)"/>).
+    /// </summary>
+    /// <param name="path">The path relative to <see cref="Configuration"/>.</param>
+    /// <returns>The path in the host's configuration.</returns>
+    public string ToHostPath( string path )
+    {
+        var first = path.Split( ':', 2 )[0];
+        return _projectedSections.TryGetValue( first, out var section ) ? $"{section}:{path}" : path;
+    }
 
     /// <inheritdoc />
     public override string ToString() => $"App '{Name}'";

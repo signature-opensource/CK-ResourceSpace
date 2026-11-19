@@ -166,6 +166,20 @@ public sealed partial class BinPathConfiguration
     /// <returns>True if it has been removed, false if it was not found.</returns>
     public bool RemoveTypeSet( string name ) => _typeSets.Remove( name );
 
+    /// <summary>
+    /// Gets the values burnt in the generated code (the values restricted to <see cref="ConfigurationLevel.Compile"/>),
+    /// by their path in the host's configuration (case insensitive). A null value burns an absent value. The App
+    /// builder fills them; the generated code gives them to the host, after its other configuration sources.
+    /// </summary>
+    public Dictionary<string, string?> CompiledValues { get; } = new( StringComparer.OrdinalIgnoreCase );
+
+    /// <summary>
+    /// Gets the patterns (see CK.Setup.ConfigurationPathPattern) of the paths of the host's configuration that are
+    /// restricted to <see cref="ConfigurationLevel.Compile"/>: a value of the host's configuration that they cover and
+    /// that is not one of the <see cref="CompiledValues"/> is ignored (it is not part of the build).
+    /// </summary>
+    public HashSet<string> CompiledLocks { get; } = new( StringComparer.OrdinalIgnoreCase );
+
     #region Aspects
 
     /// <summary>

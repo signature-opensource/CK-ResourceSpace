@@ -314,8 +314,9 @@ public sealed class CentralConfiguration
             return false;
         }
 
-        // The defaults are merged: the value of the App wins, the objects are merged.
-        static void Merge( JsonObject target, JsonObject defaults )
+        // The defaults are merged: the value of the App wins, the objects are merged. In a "$LOCK", the lowest level wins: a
+        // restriction of the defaults can't be raised by an App.
+        static void Merge( JsonObject target, JsonObject defaults, bool isLock = false )
         {
             foreach( var (key, value) in defaults )
             {
@@ -326,8 +327,22 @@ public sealed class CentralConfiguration
                 }
                 else if( existing is JsonObject oTarget && value is JsonObject oDefault )
                 {
-                    Merge( oTarget, oDefault );
+                    Merge( oTarget, oDefault, key.Equals( ConfigurationLockEntry.LockKey, StringComparison.OrdinalIgnoreCase ) );
                 }
+                else if( isLock && Lower( value, existing ) )
+                {
+                    target[key] = value?.DeepClone();
+                }
+            }
+
+            static bool Lower( JsonNode? candidate, JsonNode current )
+            {
+                return LevelOf( candidate ) is ConfigurationLevel c && LevelOf( current ) is ConfigurationLevel l && c < l;
+
+                static ConfigurationLevel? LevelOf( JsonNode? n )
+                    => n is JsonValue v && v.TryGetValue<string>( out var s ) && new ConfigurationLockEntry( "", "", s ).TryGetLevel( out var level )
+                        ? level
+                        : null;
             }
         }
     }

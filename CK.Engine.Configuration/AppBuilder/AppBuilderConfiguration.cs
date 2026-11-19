@@ -27,7 +27,7 @@ namespace CK.Setup;
 /// in it.
 /// </para>
 /// </summary>
-public sealed class AppBuilderConfiguration
+public sealed partial class AppBuilderConfiguration
 {
     /// <summary>
     /// The configuration file name, in the "XXX.Builder" project.
@@ -49,18 +49,21 @@ public sealed class AppBuilderConfiguration
     readonly bool _projectCompileKeys;
     readonly IReadOnlyList<AppConfiguration> _apps;
     readonly AppAspects _aspects;
+    readonly IReadOnlyList<ConfigurationLockEntry> _builderLocks;
 
     AppBuilderConfiguration( NormalizedPath builderFolder,
                              IReadOnlyList<JsonObject> appNodes,
                              bool projectCompileKeys,
                              IReadOnlyList<AppConfiguration> apps,
-                             AppAspects aspects )
+                             AppAspects aspects,
+                             IReadOnlyList<ConfigurationLockEntry> builderLocks )
     {
         _builderFolder = builderFolder;
         _appNodes = appNodes;
         _projectCompileKeys = projectCompileKeys;
         _apps = apps;
         _aspects = aspects;
+        _builderLocks = builderLocks;
     }
 
     /// <summary>
@@ -93,6 +96,10 @@ public sealed class AppBuilderConfiguration
         using var _ = monitor.OpenInfo( $"Reading '{file}'." );
         if( !CkonfReader.TryRead( monitor, file, out var root, out var section ) ) return null;
         if( !FindSolutionFolder( monitor, builderFolder, out var solutionFolder ) ) return null;
+        // The "$LOCK" are a build input: they are removed before anything reads the configuration.
+        var locks = new List<ConfigurationLockEntry>();
+        if( !ConfigurationLockEntry.Extract( monitor, root, section.Path, locks ) ) return null;
+        if( locks.Count > 0 ) section = ImmutableConfigurationSection.CreateFromJson( section.Path, root.ToJsonString() );
 
         bool success = true;
         foreach( var c in section.GetChildren() )
@@ -170,7 +177,28 @@ public sealed class AppBuilderConfiguration
         var e = engineConfiguration;
         var appConfigurations = apps.Select( a => new AppConfiguration( a.Name, a.App, a.Host, a.Section, e.FindRequiredBinPath( a.Name ) ) )
                                     .ToArray();
-        return new AppBuilderConfiguration( builderFolder, apps.Select( a => a.Node ).ToArray(), projectCompileKeys, appConfigurations, new AppAspects( aspectsSection ) );
+        // The "$LOCK" of an App are its own; the ones of the Builder aspects lock what they project in the hosts.
+        var builderLocks = new List<ConfigurationLockEntry>();
+        var builderAspects = $"{section.Path}:Aspects";
+        foreach( var l in locks )
+        {
+            var app = appConfigurations.FirstOrDefault( a => IsUnder( l.ObjectPath, a.Configuration.Path ) );
+            if( app != null ) app.AddLock( l );
+            else if( IsUnder( l.ObjectPath, builderAspects ) && !l.ObjectPath.Equals( builderAspects, StringComparison.OrdinalIgnoreCase ) )
+            {
+                builderLocks.Add( l );
+            }
+            else
+            {
+                monitor.Error( $"{l} is outside the Apps and the Builder aspects: a \"$LOCK\" restricts the values of an App or of a Builder aspect." );
+                success = false;
+            }
+        }
+        if( !success ) return null;
+        return new AppBuilderConfiguration( builderFolder, apps.Select( a => a.Node ).ToArray(), projectCompileKeys, appConfigurations, new AppAspects( aspectsSection ), builderLocks );
+
+        static bool IsUnder( string path, string prefix ) => path.Equals( prefix, StringComparison.OrdinalIgnoreCase )
+                                                              || path.StartsWith( prefix + ":", StringComparison.OrdinalIgnoreCase );
     }
 
     /// <summary>
@@ -297,6 +325,8 @@ public sealed class AppBuilderConfiguration
                 // A declaration that the removal emptied stays: it is written as true.
                 foreach( var path in a.DeclarationKeys ) KeepDeclaration( node, path.Split( ':' ) );
             }
+            // The burnt values are in the generated code, not in the file.
+            foreach( var path in a.BurntKeys ) Remove( node, path.Split( ':' ) );
             if( !MoveInSections( monitor, a, node ) || !SetValues( monitor, a, node ) )
             {
                 success = false;
@@ -320,14 +350,21 @@ public sealed class AppBuilderConfiguration
         }
         return success;
 
+        // A value in an array is kept: removing it would shift the indices of the next ones.
         static void Remove( JsonObject o, string[] path )
         {
+            JsonNode? n = o;
             for( int i = 0; i < path.Length - 1; ++i )
             {
-                if( o[path[i]] is not JsonObject child ) return;
-                o = child;
+                n = n switch
+                {
+                    JsonObject obj => obj[path[i]],
+                    JsonArray a when int.TryParse( path[i], out var idx ) && idx >= 0 && idx < a.Count => a[idx],
+                    _ => null
+                };
+                if( n == null ) return;
             }
-            o.Remove( path[^1] );
+            if( n is JsonObject parent ) parent.Remove( path[^1] );
         }
 
         static void KeepDeclaration( JsonObject o, string[] path )
@@ -346,6 +383,8 @@ public sealed class AppBuilderConfiguration
             bool success = true;
             foreach( var (path, value) in a.ProjectedValues.OrderBy( kv => kv.Key, StringComparer.OrdinalIgnoreCase ) )
             {
+                // A burnt value is in the generated code, not in the file.
+                if( a.BinPathConfiguration.CompiledValues.ContainsKey( path ) ) continue;
                 var parts = path.Split( ':' );
                 if( a.Configuration.TryGetSection( parts[0] ) != null )
                 {

@@ -114,6 +114,40 @@ The builder finds them in the type sets of the Apps, before the contributors run
 The "SqlServer" aspect (`SqlServerAspect`, CK.SqlServer.Setup.Model) is a Builder aspect: its
 `DefaultDatabaseConnectionString` is projected as `"SqlServer": { "DefaultDatabaseConnectionString" }` in each host.
 
+## The configuration levels and `"$LOCK"`
+
+A value is set at one of three levels (`ConfigurationLevel`): `Compile` (fixed by the build), `Init` (read when the
+application starts) or `Run` (changed while it runs). A level is a capability of the code that reads the value: the
+engine inputs (the compile keys) are `Compile`, the sections that the code reads at start (declared by the
+contributors) are `Init`. The configuration can only lower it:
+
+```jsonc
+"App": {
+  "Parties": [ ... ],
+  // The patterns are relative to the object that holds the "$LOCK": ':' paths, where a whole segment "*" is any member
+  // of an object and "[*]" any item of an array. An index ("Parties:0") is refused: it is not an identity.
+  "$LOCK": { "Parties:[*]:Address": "Compile" },
+  "Defaults": { "$LOCK": { "KeyManagement:AutoTrustKey": "Compile" } }
+}
+```
+
+- **A `"$LOCK"` is a build input:** the builder removes them before anything reads the configuration, they are never
+  projected. In the central `ckonf.json`, `Defaults:App` can hold one for every App (the lowest level wins).
+- **A value restricted to `Compile` is burnt:** it is not written in the host's `appsettings.json`, it goes to the
+  `CompiledValues` of the App's BinPath and the generated code gives it to the host after its other configuration
+  sources (nothing outside the build can change it). A literal pattern that matches no value burns its absence. The
+  `CompiledLocks` are the patterns of the host's configuration that the deployed configuration can't extend.
+- **The anchors** (`AppConfiguration.DeclareAnchor`): a section of a kind ("Party", "Remote", "OpenedRemoteTemplate"...)
+  whose values may come from fallbacks (the "Defaults" above a party). A `"$LOCK"` in an anchor, or in one of its
+  fallbacks, locks the value of each anchor at its own path: its own value, otherwise the one of its first fallback.
+- **The restrictions of the packages:** `[ConfigurationLock( "OpenedRemoteTemplate:AutoTrustKey", ConfigurationLevel.Compile, Value = "Never" )]`
+  on a configurable type whose section is a key of a party: the first segment is a kind of anchor, the rest is relative
+  to the type's section. With a `Value`, another configured value is an error and an absent one is burnt with it.
+- **A Builder aspect's `"$LOCK"`** locks the values it projects in the hosts (`AppConfiguration.ProjectValue( path, value, origin )`).
+- **The errors:** an invalid level or pattern, a value that no code declares, a level above the capability of the code.
+
+The builder applies them (`AppBuilderConfiguration.ApplyLocks`) once the contributors have contributed.
+
 ## The contributors' contract
 
 The engines deduce the engine configuration from the `ckonf.json`: they declare an `IAppBuilderContributor` with
@@ -136,6 +170,8 @@ Then it receives an `AppBuilderContext`:
   - `BinPathConfiguration.AddTypeSet( set )` adds a named type set to the BinPath of the App (a party's, a client's:
     see `TypeSetConfiguration`): a subset of its types, computed at the start of the build.
   - `AppConfiguration.ProjectInSection( key, sectionName )` moves a key in a section of the projection.
+  - `AppConfiguration.DeclareInitSection( path )` declares a section read at start: a `"$LOCK"` can restrict it.
+  - `AppConfiguration.DeclareAnchor( path, kinds, fallbacks )` declares an anchor (see above).
 - `IAppBuilderContributor.OnContributed( monitor, context )` is called once all of them have contributed: a
   contributor can check what the others did.
 
