@@ -24,6 +24,7 @@ public sealed class AppConfiguration
     readonly HashSet<string> _burntKeys;
     readonly HashSet<string> _runValues;
     readonly HashSet<string> _secretKeys;
+    readonly HashSet<string> _perDeploymentKeys;
 
     /// <summary>
     /// Initializes a new App. The builder creates them from "ckonf.json"; this is public for the tests of the contributors.
@@ -47,6 +48,7 @@ public sealed class AppConfiguration
         Aspects = new AppAspects( configuration.TryGetSection( "Aspects" ) );
         _compileKeys = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
         _secretKeys = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
+        _perDeploymentKeys = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
         _declarationKeys = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
         _projectedSections = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase );
         _projectedValues = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase );
@@ -141,6 +143,26 @@ public sealed class AppConfiguration
     /// Gets the secret keys declared by <see cref="AddSecretKey(string)"/>.
     /// </summary>
     public IReadOnlyCollection<string> SecretKeys => _secretKeys;
+
+    /// <summary>
+    /// Declares that the values at a path are "per deployment" (see <see cref="CentralDeployment"/>): each deployment must
+    /// write them itself. For the readers that read their keys by hand; a configurable type declares them with
+    /// <c>[ConfigurationPerDeployment]</c>.
+    /// </summary>
+    /// <param name="path">
+    /// The path of the values, relative to <see cref="Configuration"/> (with ':' separators): it may contain the patterns
+    /// of the configuration paths (<c>*</c> for any member, <c>[*]</c> for any item).
+    /// </param>
+    public void AddPerDeploymentKey( string path )
+    {
+        Throw.CheckNotNullOrWhiteSpaceArgument( path );
+        _perDeploymentKeys.Add( path );
+    }
+
+    /// <summary>
+    /// Gets the keys declared by <see cref="AddPerDeploymentKey(string)"/>.
+    /// </summary>
+    public IReadOnlyCollection<string> PerDeploymentKeys => _perDeploymentKeys;
 
     /// <summary>
     /// Declares that a key of the <see cref="Configuration"/> is projected in a section of the host's "appsettings.json":

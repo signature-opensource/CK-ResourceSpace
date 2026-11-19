@@ -93,6 +93,41 @@ projection.
 - **A builder of the repository that is not in `"Builders"` is an error** when the repository has a central
   configuration.
 
+### The deployments
+
+The central configuration is the development one (`#Dev`). The other deployments of the solution are in its
+`Deployment` folder, next to it (`CentralDeployment`): a folder whose name starts with `#` is a deployment, its
+environment, and the folders above it are its domain.
+
+```
+Deployment/
+  #Production/ckonf.json            the central domain, in "#Production"
+  #Staging/ckonf.json               { "$BASE": "#Production", ... }
+  Paris/Shop/#Production/ckonf.json the domain "Paris/Shop"
+  GenerateAssets.cs, Assets/...     regular folders and files: ignored
+```
+
+- **Its name is its path** (`#Production`, `Paris/Shop/#Staging`). Its `Domain` and `Environment` come from it: writing them
+  is an error, and so are a `#Dev` folder and a path that spells the central domain (it is `Deployment/#X`). A folder
+  whose name starts with `.`, `Deployment/Assets`, and a folder without a `#` folder below it are ignored.
+- **Its `ckonf.json` is an overlay** (JSON Merge Patch, RFC 7396, case insensitive): an object merges, `null` removes, any
+  other value (an array included) replaces. It overlays the central configuration, or the deployment that its
+  `"$BASE"` names. The structure can change (a removed party, another feature): the merged configuration is checked like
+  the central one.
+- **Every builder run writes its merged configuration**, `ckonf.merged.json`, next to it, when it changes (its first line
+  lists its sources).
+- **A value "per deployment"** (an address, a public URL) must be written by the deployment itself, in its own overlay
+  (`null` counts): inherited from the central configuration or from its base, it is a build error. They are declared:
+  - by the configuration: `"$PER_DEPLOYMENT": [ "Demo", "Links:[*]:Link:KeyManagement:AutoTrustKey" ]` on any object of the
+    central configuration or of an overlay (the patterns are relative to the object; the markers are removed when the
+    file is read, they are never projected);
+  - by the code: `[ConfigurationPerDeployment( "Party:Urls" )]` on a configurable type (built like a `[ConfigurationLock]`
+    path), `AppConfiguration.AddPerDeploymentKey( path )` for a reader of an App, and
+    `CentralProjectionContext.AddPerDeploymentKey( "Links:[*]:Link:Address" )` for a contributor's central keys.
+
+  A value of an App is the one of its entry in `"Builders"`, otherwise the one of `"Defaults:App"`: the deployment writes
+  the one it uses. `CentralDeployment.CheckPerDeployment` checks them (the builder runs it for its own Apps).
+
 ## The aspects
 
 An aspect is a configurable type of a model: a package (a concrete `IResourceGroup`) decorated with

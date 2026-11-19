@@ -14,6 +14,8 @@ namespace CK.Setup;
 /// It holds its Builders, keyed by the path of their folder ("Front/Front.Builder"), with their aspects and their App or
 /// Apps, the defaults of the Apps ("Defaults:App") and what the contributors read ("Domain", "Links"...: the graph of the
 /// parties). The "ckonf.json" of each builder is a projection of its entry (<see cref="WriteProjection"/>).
+/// The deployments of the solution are overlays of it, in its "Deployment" folder (see <see cref="CentralDeployment"/>):
+/// its <c>"$PER_DEPLOYMENT"</c> markers are removed when it is read (<see cref="PerDeploymentMarkers"/>).
 /// <code>
 /// {
 ///   "Domain": "Sample/Auth3",
@@ -42,20 +44,39 @@ public sealed class CentralConfiguration
     readonly JsonObject _root;
     readonly JsonObject? _appDefaults;
     readonly IReadOnlyList<CentralBuilder> _builders;
+    readonly IReadOnlyList<PerDeploymentMarker> _markers;
+    readonly List<(string Key, string Source)> _perDeploymentKeys;
 
     CentralConfiguration( NormalizedPath file,
                           ImmutableConfigurationSection configuration,
                           JsonObject root,
                           JsonObject? appDefaults,
-                          List<CentralBuilder> builders )
+                          List<CentralBuilder> builders,
+                          IReadOnlyList<PerDeploymentMarker> markers )
     {
         File = file;
         Configuration = configuration;
         _root = root;
         _appDefaults = appDefaults;
         _builders = builders;
+        _markers = markers;
+        _perDeploymentKeys = new List<(string, string)>();
         foreach( var b in builders ) b.Central = this;
     }
+
+    /// <summary>
+    /// Gets the <c>"$PER_DEPLOYMENT"</c> markers of this configuration (removed from it when it is read).
+    /// </summary>
+    public IReadOnlyList<PerDeploymentMarker> PerDeploymentMarkers => _markers;
+
+    /// <summary>
+    /// Gets the patterns of the values per deployment (relative to the root) that the contributors declared while they
+    /// projected a builder (<see cref="CentralProjectionContext.AddPerDeploymentKey(string)"/>), with their source.
+    /// </summary>
+    public IReadOnlyList<(string Key, string Source)> PerDeploymentKeys => _perDeploymentKeys;
+
+    // The content without the "$PER_DEPLOYMENT" markers: the base of the deployments.
+    internal JsonObject RootWithoutMarkers => _root;
 
     /// <summary>
     /// Gets the central configuration file.
@@ -149,6 +170,10 @@ public sealed class CentralConfiguration
 
     static CentralConfiguration? Create( IActivityMonitor monitor, NormalizedPath file, JsonObject root, ImmutableConfigurationSection section )
     {
+        // The "$PER_DEPLOYMENT" markers are a build input: they are removed before anything reads the configuration.
+        var markers = new List<PerDeploymentMarker>();
+        if( !PerDeploymentMarker.Extract( monitor, root, "", $"'{file}'", markers ) ) return null;
+        if( markers.Count > 0 ) section = ImmutableConfigurationSection.CreateFromJson( section.Path, root.ToJsonString() );
         bool success = true;
         // The defaults of the Apps: "Defaults:App".
         JsonObject? appDefaults = null;
@@ -229,7 +254,7 @@ public sealed class CentralConfiguration
             }
             builders.Add( b );
         }
-        return success ? new CentralConfiguration( file, section, root, appDefaults, builders ) : null;
+        return success ? new CentralConfiguration( file, section, root, appDefaults, builders, markers ) : null;
     }
 
     static string? NormalizeBuilderPath( string key )
@@ -272,6 +297,7 @@ public sealed class CentralConfiguration
         {
             try
             {
+                context.CurrentSource = $"the contributor '{c.GetType().ToCSharpName()}'";
                 success &= c.ProjectFromCentral( monitor, context );
             }
             catch( Exception ex )
@@ -287,6 +313,10 @@ public sealed class CentralConfiguration
             success = false;
         }
         if( !success ) return false;
+        foreach( var k in context.PerDeploymentKeys )
+        {
+            if( !_perDeploymentKeys.Contains( k ) ) _perDeploymentKeys.Add( k );
+        }
         if( _appDefaults != null )
         {
             foreach( var a in apps ) Merge( a.Node, _appDefaults );
@@ -498,4 +528,22 @@ public sealed class CentralProjectionContext
     /// Gets the claimed root keys.
     /// </summary>
     public IReadOnlySet<string> ClaimedKeys => _claimedKeys;
+
+    readonly List<(string Key, string Source)> _perDeploymentKeys = new List<(string, string)>();
+
+    /// <summary>
+    /// Declares a pattern of values per deployment of a key that the contributor reads, relative to the root of the
+    /// central configuration (<c>"Links:[*]:Link:Address"</c>): each deployment must write them itself (see
+    /// <see cref="CentralDeployment"/>).
+    /// </summary>
+    /// <param name="pattern">The pattern (':' separated, <c>*</c> for any member, <c>[*]</c> for any item).</param>
+    public void AddPerDeploymentKey( string pattern )
+    {
+        Throw.CheckNotNullOrWhiteSpaceArgument( pattern );
+        _perDeploymentKeys.Add( (pattern, CurrentSource) );
+    }
+
+    internal string CurrentSource { get; set; } = "a contributor";
+
+    internal IReadOnlyList<(string Key, string Source)> PerDeploymentKeys => _perDeploymentKeys;
 }
