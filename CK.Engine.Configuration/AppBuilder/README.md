@@ -131,16 +131,20 @@ Deployment/
   A value of an App is the one of its entry in `"Builders"`, otherwise the one of `"Defaults:App"`: the deployment writes
   the one it uses. `CentralDeployment.CheckPerDeployment` checks them (the builder runs it for its own Apps).
 - **The settings of a deployment** that are not configuration are its `"Deployment"` key (`CentralDeploymentSettings`;
-  in the central configuration, the defaults of every deployment): `"Builders"` (the builders to deploy, all by default),
-  `"SelfContained"` and `"RuntimeIdentifier"` (how the hosts are published).
+  in the central configuration, the defaults of every deployment, merged like the rest): `"Builders"` (the builders to
+  deploy, all by default), `"Publish"` (the MSBuild properties of the publication of every host, applied as-is:
+  `{ "RuntimeIdentifier": "linux-x64", "SelfContained": true, "PublishSingleFile": true }`) and `"Apps"` (the ones of an
+  App, over them: `"Apps": { "Auth3.Worker": { "Publish": { "PublishSingleFile": "" } } }`, an empty value resets a
+  property). They are not modeled: only their shape is checked (`CentralDeploymentSettings.GetPublishProperties`).
 - **The build of a deployment** (CK.AppDeployment) runs, for each deployed builder, a builder generated for it: its folder
   has a `ckonf.deployment.json` (`{ "Deployment": "#Production", "Builder": "Front/Auth3.Front.Builder" }`,
   `CentralDeployment.WriteBuilderFile`), and its `ckonf.json` is the projection of the builder in the merged configuration
   (`CentralDeployment.WriteBuilderProjection`): the `"AppProject"` of each App is the original `.App` project, its host is
   the copy next to the generated builder. Its `AppBuilderContext.Deployment` is the deployment: `TryResolveSecret` fails
   (the build of a deployment never reads a secret, never touches a database). It writes the manifest of each host,
-  `Deployment.json` (`AppBuilderConfiguration.WriteDeploymentManifests`): the full name, the deployment and its bases, the
-  names of the secrets the host needs, its values per deployment; for a fleet, its instances (each configured one with
+  `$StObjGen/Deployment.manifest` (`AppBuilderConfiguration.WriteDeploymentManifests`; CK.AppDeployment adds it to the
+  file that the publication writes next to the executable): the full name, the deployment and its bases, the
+  publication properties of the host, the names of the secrets the host needs, its values per deployment; for a fleet, its instances (each configured one with
   its full name, its start arguments `--Instance=Name` and its values per deployment resolved, and the indexes of the
   dynamic ones of an Opened fleet). The asset name of a deployment
   (`CentralDeployment.AssetName`) drops the `#` and maps `/` to `.`: `Production`, `Paris.Shop.Staging`.

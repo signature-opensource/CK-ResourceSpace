@@ -224,7 +224,7 @@ public class CentralDeploymentTests
     const string _twoBuilders = """
         {
           "Domain": "Sample/Auth3",
-          "Deployment": { "SelfContained": false },
+          "Deployment": { "Publish": { "SelfContained": false, "PublishSingleFile": true, "InvariantGlobalization": null } },
           "Builders": {
             "Front/Front.Builder": { "App": { "AppProject": "../Other/Front.App", "HostProject": "../Front.Host" } },
             "Auth3/Auth3.Builder": { "App": {} }
@@ -236,26 +236,44 @@ public class CentralDeploymentTests
     public void the_settings_of_the_deployments_and_their_asset_names()
     {
         var central = Create( _twoBuilders,
-                              ("#Production", """{ "Deployment": { "Builders": [ "Front/Front.Builder" ], "RuntimeIdentifier": "linux-x64" } }"""),
+                              ("#Production", """
+                                    {
+                                      "Deployment": {
+                                        "Builders": [ "Front/Front.Builder" ],
+                                        "Publish": { "RuntimeIdentifier": "linux-x64", "PublishSingleFile": null },
+                                        "Apps": { "front": { "Publish": { "SelfContained": true, "TieredPGO": 1, "RuntimeIdentifier": "" } } }
+                                      }
+                                    }
+                                    """),
                               ("Paris/Shop/#Staging", "{}") );
         var deployments = Load( central );
         var production = deployments.Single( d => d.Name == "#Production" );
         production.Settings.Builders.ShouldBe( ["Front/Front.Builder"] );
-        production.Settings.RuntimeIdentifier.ShouldBe( "linux-x64" );
-        production.Settings.SelfContained.ShouldBeFalse();
+        // The central defaults, the overlay (null removes an inherited property), then the App ("" resets one).
+        production.Settings.Publish.OrderBy( kv => kv.Key ).Select( kv => $"{kv.Key}={kv.Value}" )
+                  .ShouldBe( ["RuntimeIdentifier=linux-x64", "SelfContained=false"] );
+        production.Settings.GetPublishProperties( "Front" ).Select( p => $"{p.Name}={p.Value}" )
+                  .ShouldBe( ["RuntimeIdentifier=", "SelfContained=true", "TieredPGO=1"] );
+        production.Settings.GetPublishProperties( "Auth3" ).Select( p => $"{p.Name}={p.Value}" )
+                  .ShouldBe( ["RuntimeIdentifier=linux-x64", "SelfContained=false"] );
         production.DeployedBuilders.Select( b => b.Path ).ShouldBe( ["Front/Front.Builder"] );
         production.AssetName.ShouldBe( "Production" );
         production.Environment.ShouldBe( "#Production" );
 
         var staging = deployments.Single( d => d.Name == "Paris/Shop/#Staging" );
-        staging.Settings.ShouldBe( CentralDeploymentSettings.Default );
+        staging.Settings.Builders.ShouldBeNull();
+        staging.Settings.GetPublishProperties( "Front" ).Select( p => $"{p.Name}={p.Value}" )
+               .ShouldBe( ["PublishSingleFile=true", "SelfContained=false"] );
         staging.DeployedBuilders.Select( b => b.Path ).ShouldBe( ["Front/Front.Builder", "Auth3/Auth3.Builder"] );
         staging.AssetName.ShouldBe( "Paris.Shop.Staging" );
         staging.Environment.ShouldBe( "#Staging" );
     }
 
     [TestCase( """{ "Deployment": { "Builders": [ "Nope/Nope.Builder" ] } }""", "Invalid builder '\"Nope/Nope.Builder\"'" )]
-    [TestCase( """{ "Deployment": { "SelfContained": true } }""", "requires a \"RuntimeIdentifier\"" )]
+    [TestCase( """{ "Deployment": { "Publish": { "Bad Name": 1 } } }""", "Invalid MSBuild property name 'Bad Name'" )]
+    [TestCase( """{ "Deployment": { "Publish": { "X": [ 1 ] } } }""", "Invalid value of 'X'" )]
+    [TestCase( """{ "Deployment": { "Apps": { "Nope": { "Publish": {} } } } }""", "Unknown App 'Nope'" )]
+    [TestCase( """{ "Deployment": { "Apps": { "Front": { "Other": {} } } } }""", "an object with \"Publish\" is expected" )]
     [TestCase( """{ "Deployment": { "Other": 1 } }""", "Unknown key \"Deployment:Other\"" )]
     [TestCase( """{ "Deployment": [] }""", "an object is expected" )]
     public void invalid_settings( string overlay, string message )
@@ -290,9 +308,10 @@ public class CentralDeploymentTests
         var keys = new Dictionary<string, IReadOnlyList<(string, string)>> { { "Backs", [("Local:Port", "test")] } };
         app.WriteDeploymentManifests( TestHelper.Monitor, production, keys ).ShouldBeTrue();
 
-        var m = System.Text.Json.Nodes.JsonNode.Parse( File.ReadAllText( root.Combine( "Backs.Host/Deployment.json" ) ) )!;
+        var m = System.Text.Json.Nodes.JsonNode.Parse( File.ReadAllText( root.Combine( "Backs.Host/$StObjGen/Deployment.manifest" ) ) )!;
         m["FullName"]!.GetValue<string>().ShouldBe( "Sample/$Backs-{Name}/#Production" );
         m["Deployment"]!.GetValue<string>().ShouldBe( "#Production" );
+        m["Publish"]!["PublishSingleFile"]!.GetValue<string>().ShouldBe( "true" );
         m["Secrets"]!.AsArray().Select( s => s!.GetValue<string>() ).ShouldBe( ["Backs:{Name}:Key", "Db"] );
         m["PerDeployment"]!["Local:Port"]!.GetValue<string>().ShouldBe( "tcp:0.0.0.0:{38000+Index}" );
         var configured = m["Instances"]!["Configured"]!.AsArray();

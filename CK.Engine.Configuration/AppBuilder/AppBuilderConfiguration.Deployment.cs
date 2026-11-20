@@ -13,10 +13,12 @@ namespace CK.Setup;
 public sealed partial class AppBuilderConfiguration
 {
     /// <summary>
-    /// The manifest of a host built for a deployment, written in its ".Host" project by the builder of the deployment
-    /// (and copied in the published host): <see cref="WriteDeploymentManifests"/>.
+    /// The manifest of a host built for a deployment, written in the "$StObjGen" folder of its ".Host" project by the
+    /// builder of the deployment (<see cref="WriteDeploymentManifests"/>): CK.AppDeployment adds it to the file that the
+    /// publication of the host writes next to its executable. Its extension is not ".json": the Web SDK publishes the json
+    /// files of a project.
     /// </summary>
-    public const string DeploymentManifestFileName = "Deployment.json";
+    public const string DeploymentManifestFileName = "$StObjGen/Deployment.manifest";
 
     static readonly JsonSerializerOptions _manifestOptions = new JsonSerializerOptions
     {
@@ -27,6 +29,7 @@ public sealed partial class AppBuilderConfiguration
     /// <summary>
     /// Writes the manifest (<see cref="DeploymentManifestFileName"/>) of each App built for a deployment in its ".Host"
     /// project: the full name of its party, the deployment (its name, its environment, its <c>"$BASE"</c> chain), the
+    /// MSBuild properties of its publication (<see cref="CentralDeploymentSettings.GetPublishProperties"/>), the
     /// names of the secrets that the host needs (the handles of its configuration and of its burnt values), and its values
     /// per deployment (its addresses, its public URLs...: the values covered by the keys per deployment of the App).
     /// The manifest of a fleet (a template App: "InstanceCount", "Instances" or "MaxInstanceCount") lists its instances:
@@ -68,6 +71,8 @@ public sealed partial class AppBuilderConfiguration
                 ["Deployment"] = deployment.Name,
                 ["Environment"] = deployment.Environment,
                 ["Bases"] = bases,
+                ["Publish"] = new JsonObject( deployment.Settings.GetPublishProperties( a.Name )
+                                                         .Select( p => new KeyValuePair<string, JsonNode?>( p.Name, p.Value ) ) ),
                 ["Secrets"] = new JsonArray( secrets.Select( s => (JsonNode?)s ).ToArray() ),
                 ["PerDeployment"] = values
             };
@@ -105,9 +110,10 @@ public sealed partial class AppBuilderConfiguration
                 }
                 manifest["Instances"] = o;
             }
-            var file = a.HostProjectPath.AppendPart( DeploymentManifestFileName );
+            var file = a.HostProjectPath.Combine( DeploymentManifestFileName );
             try
             {
+                Directory.CreateDirectory( file.RemoveLastPart() );
                 File.WriteAllText( file, manifest.ToJsonString( _manifestOptions ) + Environment.NewLine );
                 monitor.Info( $"'{file}' written: {secrets.Count} secret(s), {values.Count} value(s) per deployment." );
             }

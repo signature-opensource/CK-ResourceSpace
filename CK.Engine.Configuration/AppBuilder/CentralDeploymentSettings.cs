@@ -1,8 +1,11 @@
 using CK.Core;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 
 namespace CK.Setup;
 
@@ -13,21 +16,67 @@ namespace CK.Setup;
 /// "Deployment": {
 ///   // The builders to deploy (their paths in "Builders"): all by default.
 ///   "Builders": [ "Front/Auth3.Front.Builder", "Admin/Auth3.Admin.Builder" ],
-///   // How the hosts are published: framework-dependent by default.
-///   "SelfContained": false,
-///   "RuntimeIdentifier": "linux-x64"
+///   // The MSBuild properties of the publication of every host, applied as-is ("dotnet publish" defaults otherwise).
+///   "Publish": { "RuntimeIdentifier": "linux-x64", "SelfContained": true, "PublishSingleFile": true },
+///   // The ones of an App (by its name), over them: an empty string resets a property (the SDK default).
+///   "Apps": { "Auth3.Worker": { "Publish": { "PublishSingleFile": "", "InvariantGlobalization": true } } }
 /// }
 /// </code>
+/// The publication properties are not modeled: only their shape is checked (an MSBuild property name, a string, a
+/// number or a boolean); MSBuild and the .NET SDK report the rest when the hosts are published. The settings are merged
+/// like the rest (a null removes a key of the merged settings: a deployment removes an inherited property with null).
 /// </summary>
-/// <param name="Builders">The paths of the builders to deploy, null for all of them.</param>
-/// <param name="SelfContained">Whether the hosts are published with the .NET runtime.</param>
-/// <param name="RuntimeIdentifier">The runtime identifier of the published hosts, null for a portable publish.</param>
-public sealed record CentralDeploymentSettings( IReadOnlyList<string>? Builders, bool SelfContained, string? RuntimeIdentifier )
+public sealed partial class CentralDeploymentSettings
 {
+    readonly IReadOnlyDictionary<string, string> _publish;
+    readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> _apps;
+
+    CentralDeploymentSettings( IReadOnlyList<string>? builders,
+                               IReadOnlyDictionary<string, string> publish,
+                               IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> apps )
+    {
+        Builders = builders;
+        _publish = publish;
+        _apps = apps;
+    }
+
     /// <summary>
-    /// The default settings: all the builders, framework-dependent, portable.
+    /// The default settings: all the builders, the defaults of "dotnet publish".
     /// </summary>
-    public static readonly CentralDeploymentSettings Default = new( null, false, null );
+    public static readonly CentralDeploymentSettings Default = new( null,
+                                                                    new Dictionary<string, string>(),
+                                                                    new Dictionary<string, IReadOnlyDictionary<string, string>>() );
+
+    /// <summary>
+    /// Gets the paths of the builders to deploy, null for all of them.
+    /// </summary>
+    public IReadOnlyList<string>? Builders { get; }
+
+    /// <summary>
+    /// Gets the MSBuild properties of the publication of every host (the <c>"Publish"</c> of the settings).
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Publish => _publish;
+
+    /// <summary>
+    /// Gets the MSBuild properties of the publication of the host of an App: the <see cref="Publish"/> properties, the
+    /// ones of the App (<c>"Apps": { "Name": { "Publish": { ... } } }</c>) over them (an empty value resets a property:
+    /// the SDK default).
+    /// </summary>
+    /// <param name="appName">The App name.</param>
+    /// <returns>The properties, sorted by name.</returns>
+    public IReadOnlyList<(string Name, string Value)> GetPublishProperties( string appName )
+    {
+        var result = new Dictionary<string, string>( _publish, StringComparer.OrdinalIgnoreCase );
+        var app = _apps.FirstOrDefault( kv => kv.Key.Equals( appName, StringComparison.OrdinalIgnoreCase ) ).Value;
+        if( app != null )
+        {
+            foreach( var (name, value) in app ) result[name] = value;
+        }
+        return result.OrderBy( kv => kv.Key, StringComparer.OrdinalIgnoreCase ).Select( kv => (kv.Key, kv.Value) ).ToList();
+    }
+
+    [GeneratedRegex( "^[A-Za-z_][A-Za-z0-9_.-]*$" )]
+    private static partial Regex PropertyName();
 
     /// <summary>
     /// Reads the settings.
@@ -40,22 +89,23 @@ public sealed record CentralDeploymentSettings( IReadOnlyList<string>? Builders,
     public static CentralDeploymentSettings? Read( IActivityMonitor monitor, JsonNode? node, CentralConfiguration configuration, string source )
     {
         if( node == null ) return Default;
+        var key = CentralDeployment.SettingsKey;
         if( node is not JsonObject o )
         {
-            monitor.Error( $"Invalid \"{CentralDeployment.SettingsKey}\" of {source}: an object is expected (\"Builders\", \"SelfContained\", \"RuntimeIdentifier\")." );
+            monitor.Error( $"Invalid \"{key}\" of {source}: an object is expected (\"Builders\", \"Publish\", \"Apps\")." );
             return null;
         }
         bool success = true;
         List<string>? builders = null;
-        bool selfContained = false;
-        string? rid = null;
-        foreach( var (key, value) in o )
+        var publish = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase );
+        var apps = new Dictionary<string, IReadOnlyDictionary<string, string>>( StringComparer.OrdinalIgnoreCase );
+        foreach( var (k, value) in o )
         {
-            if( key.Equals( "Builders", StringComparison.OrdinalIgnoreCase ) )
+            if( k.Equals( "Builders", StringComparison.OrdinalIgnoreCase ) )
             {
                 if( value is not JsonArray a )
                 {
-                    monitor.Error( $"Invalid \"{CentralDeployment.SettingsKey}:Builders\" of {source}: an array of the paths of the builders is expected." );
+                    monitor.Error( $"Invalid \"{key}:Builders\" of {source}: an array of the paths of the builders is expected." );
                     success = false;
                     continue;
                 }
@@ -66,39 +116,91 @@ public sealed record CentralDeploymentSettings( IReadOnlyList<string>? Builders,
                     var b = path != null ? configuration.Builders.FirstOrDefault( b => b.Path.Equals( path, StringComparison.OrdinalIgnoreCase ) ) : null;
                     if( b == null )
                     {
-                        monitor.Error( $"Invalid builder '{item?.ToJsonString()}' in \"{CentralDeployment.SettingsKey}:Builders\" of {source}: the builders are '{configuration.Builders.Select( b => b.Path ).Concatenate( "', '" )}'." );
+                        monitor.Error( $"Invalid builder '{item?.ToJsonString()}' in \"{key}:Builders\" of {source}: the builders are '{configuration.Builders.Select( b => b.Path ).Concatenate( "', '" )}'." );
                         success = false;
                     }
                     else if( !builders.Contains( b.Path ) ) builders.Add( b.Path );
                 }
             }
-            else if( key.Equals( "SelfContained", StringComparison.OrdinalIgnoreCase ) )
+            else if( k.Equals( "Publish", StringComparison.OrdinalIgnoreCase ) )
             {
-                if( value is not JsonValue v || !v.TryGetValue( out selfContained ) )
+                var p = ReadProperties( monitor, value, $"\"{key}:Publish\" of {source}", ref success );
+                if( p != null )
                 {
-                    monitor.Error( $"Invalid \"{CentralDeployment.SettingsKey}:SelfContained\" of {source}: true or false is expected." );
-                    success = false;
+                    foreach( var (name, v) in p ) publish[name] = v;
                 }
             }
-            else if( key.Equals( "RuntimeIdentifier", StringComparison.OrdinalIgnoreCase ) )
+            else if( k.Equals( "Apps", StringComparison.OrdinalIgnoreCase ) )
             {
-                if( value is not JsonValue v || !v.TryGetValue( out rid ) || string.IsNullOrWhiteSpace( rid ) )
+                if( value is not JsonObject oApps )
                 {
-                    monitor.Error( $"Invalid \"{CentralDeployment.SettingsKey}:RuntimeIdentifier\" of {source}: a runtime identifier (\"linux-x64\") is expected." );
+                    monitor.Error( $"Invalid \"{key}:Apps\" of {source}: an object keyed by App names is expected." );
                     success = false;
+                    continue;
+                }
+                foreach( var (appName, appValue) in oApps )
+                {
+                    if( !configuration.AllApps.Any( a => a.Name.Equals( appName, StringComparison.OrdinalIgnoreCase ) ) )
+                    {
+                        monitor.Error( $"Unknown App '{appName}' in \"{key}:Apps\" of {source}: the Apps are '{configuration.AllApps.Select( a => a.Name ).Concatenate( "', '" )}'." );
+                        success = false;
+                        continue;
+                    }
+                    if( appValue is not JsonObject oApp || oApp.Any( kv => !kv.Key.Equals( "Publish", StringComparison.OrdinalIgnoreCase ) ) )
+                    {
+                        monitor.Error( $"Invalid \"{key}:Apps:{appName}\" of {source}: an object with \"Publish\" is expected." );
+                        success = false;
+                        continue;
+                    }
+                    var p = ReadProperties( monitor, oApp.FirstOrDefault().Value, $"\"{key}:Apps:{appName}:Publish\" of {source}", ref success );
+                    if( p != null ) apps[appName] = p;
                 }
             }
             else
             {
-                monitor.Error( $"Unknown key \"{CentralDeployment.SettingsKey}:{key}\" of {source}: \"Builders\", \"SelfContained\" and \"RuntimeIdentifier\" are expected." );
+                monitor.Error( $"Unknown key \"{key}:{k}\" of {source}: \"Builders\", \"Publish\" and \"Apps\" are expected." );
                 success = false;
             }
         }
-        if( selfContained && rid == null )
+        return success ? new CentralDeploymentSettings( builders, publish, apps ) : null;
+
+        static Dictionary<string, string>? ReadProperties( IActivityMonitor monitor, JsonNode? node, string source, ref bool success )
         {
-            monitor.Error( $"\"{CentralDeployment.SettingsKey}:SelfContained\" of {source} requires a \"RuntimeIdentifier\"." );
-            success = false;
+            if( node == null ) return null;
+            if( node is not JsonObject o )
+            {
+                monitor.Error( $"Invalid {source}: an object of MSBuild properties is expected ({{ \"RuntimeIdentifier\": \"linux-x64\" }})." );
+                success = false;
+                return null;
+            }
+            var result = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase );
+            foreach( var (name, value) in o )
+            {
+                if( !PropertyName().IsMatch( name ) )
+                {
+                    monitor.Error( $"Invalid MSBuild property name '{name}' in {source}." );
+                    success = false;
+                    continue;
+                }
+                // A null of the central configuration (a merge patch removes the ones of the overlays): no property.
+                if( value == null ) continue;
+                if( value is JsonValue v && v.GetValueKind() is JsonValueKind.String or JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False )
+                {
+                    result[name] = v.GetValueKind() switch
+                    {
+                        JsonValueKind.True => "true",
+                        JsonValueKind.False => "false",
+                        JsonValueKind.String => v.GetValue<string>(),
+                        _ => v.ToJsonString()
+                    };
+                }
+                else
+                {
+                    monitor.Error( $"Invalid value of '{name}' in {source}: a string, a number or a boolean is expected." );
+                    success = false;
+                }
+            }
+            return result;
         }
-        return success ? new CentralDeploymentSettings( builders, selfContained, rid ) : null;
     }
 }
