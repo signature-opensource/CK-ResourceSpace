@@ -52,17 +52,13 @@ public sealed partial class AppBuilderConfiguration
             {
                 if( ConfigurationPathPattern.TryParse( text, out var p, out _ ) ) patterns.Add( p );
             }
+            // The required secrets and the optional ones (a name required somewhere is required).
             var secrets = new SortedSet<string>( StringComparer.OrdinalIgnoreCase );
-            var handleSuffix = ":" + ConfigurationSecret.HandleKey;
-            foreach( var (path, value) in a.Configuration.AsEnumerable( makePathsRelative: true ) )
-            {
-                if( value != null && path.EndsWith( handleSuffix, StringComparison.OrdinalIgnoreCase ) ) secrets.Add( value );
-            }
+            var optionalSecrets = new SortedSet<string>( StringComparer.OrdinalIgnoreCase );
+            CollectSecrets( a.Configuration.AsEnumerable( makePathsRelative: true ), secrets, optionalSecrets );
             var values = PerDeploymentValues( a.Configuration, patterns );
-            foreach( var (path, value) in a.ProjectedValues.Concat( a.BinPathConfiguration.CompiledValues ) )
-            {
-                if( path.EndsWith( handleSuffix, StringComparison.OrdinalIgnoreCase ) ) secrets.Add( value );
-            }
+            CollectSecrets( a.ProjectedValues.Concat( a.BinPathConfiguration.CompiledValues ).Select( kv => KeyValuePair.Create( kv.Key, (string?)kv.Value ) ), secrets, optionalSecrets );
+            optionalSecrets.ExceptWith( secrets );
             var bases = new JsonArray();
             for( var d = deployment.Base; d != null; d = d.Base ) bases.Add( d.Name );
             var manifest = new JsonObject
@@ -74,6 +70,7 @@ public sealed partial class AppBuilderConfiguration
                 ["Publish"] = new JsonObject( deployment.Settings.GetPublishProperties( a.Name )
                                                          .Select( p => new KeyValuePair<string, JsonNode?>( p.Name, p.Value ) ) ),
                 ["Secrets"] = new JsonArray( secrets.Select( s => (JsonNode?)s ).ToArray() ),
+                ["OptionalSecrets"] = new JsonArray( optionalSecrets.Select( s => (JsonNode?)s ).ToArray() ),
                 ["PerDeployment"] = values
             };
             // A fleet: its instances.
@@ -93,13 +90,15 @@ public sealed partial class AppBuilderConfiguration
                         success = false;
                         continue;
                     }
+                    var (instanceSecrets, instanceOptionalSecrets) = InstanceSecrets( resolved, secrets, optionalSecrets );
                     configured.Add( new JsonObject
                     {
                         ["Name"] = i.Name,
                         ["Index"] = i.Index,
                         ["FullName"] = resolved["FullName"],
                         ["Arguments"] = new JsonArray( (JsonNode?)$"--Instance={i.Name}" ),
-                        ["Secrets"] = InstanceSecrets( resolved, secrets ),
+                        ["Secrets"] = instanceSecrets,
+                        ["OptionalSecrets"] = instanceOptionalSecrets,
                         ["PerDeployment"] = PerDeploymentValues( resolved, patterns )
                     } );
                 }
@@ -125,17 +124,24 @@ public sealed partial class AppBuilderConfiguration
         }
         return success;
 
+        // The names of the secrets, required and optional, of a set of values.
+        static void CollectSecrets( IEnumerable<KeyValuePair<string, string?>> values, SortedSet<string> required, SortedSet<string> optional )
+        {
+            foreach( var (path, value) in values )
+            {
+                if( value != null && ConfigurationSecret.IsHandlePath( path, out _, out var isOptional ) ) (isOptional ? optional : required).Add( value );
+            }
+        }
+
         // The names of the secrets of an instance: its handles resolved, and the names of the App without placeholders
         // (the other ones are its handles).
-        static JsonArray InstanceSecrets( ImmutableConfigurationSection resolved, SortedSet<string> appSecrets )
+        static (JsonArray Required, JsonArray Optional) InstanceSecrets( ImmutableConfigurationSection resolved, SortedSet<string> appSecrets, SortedSet<string> appOptionalSecrets )
         {
-            var names = new SortedSet<string>( appSecrets.Where( n => !n.Contains( '{' ) ), StringComparer.OrdinalIgnoreCase );
-            var handleSuffix = ":" + ConfigurationSecret.HandleKey;
-            foreach( var (path, value) in resolved.AsEnumerable( makePathsRelative: true ) )
-            {
-                if( value != null && path.EndsWith( handleSuffix, StringComparison.OrdinalIgnoreCase ) ) names.Add( value );
-            }
-            return new JsonArray( names.Select( n => (JsonNode?)n ).ToArray() );
+            var required = new SortedSet<string>( appSecrets.Where( n => !n.Contains( '{' ) ), StringComparer.OrdinalIgnoreCase );
+            var optional = new SortedSet<string>( appOptionalSecrets.Where( n => !n.Contains( '{' ) ), StringComparer.OrdinalIgnoreCase );
+            CollectSecrets( resolved.AsEnumerable( makePathsRelative: true ), required, optional );
+            optional.ExceptWith( required );
+            return (new JsonArray( required.Select( n => (JsonNode?)n ).ToArray() ), new JsonArray( optional.Select( n => (JsonNode?)n ).ToArray() ));
         }
 
         // The values of a configuration covered by the keys per deployment, by their relative path.

@@ -144,7 +144,7 @@ Deployment/
   (the build of a deployment never reads a secret, never touches a database). It writes the manifest of each host,
   `$StObjGen/Deployment.manifest` (`AppBuilderConfiguration.WriteDeploymentManifests`; CK.AppDeployment adds it to the
   file that the publication writes next to the executable): the full name, the deployment and its bases, the
-  publication properties of the host, the names of the secrets the host needs, its values per deployment; for a fleet, its instances (each configured one with
+  publication properties of the host, the names of the secrets the host needs ("Secrets") and of the optional ones ("OptionalSecrets"), its values per deployment; for a fleet, its instances (each configured one with
   its full name, its start arguments `--Instance=Name` and its values per deployment resolved, and the indexes of the
   dynamic ones of an Opened fleet). The asset name of a deployment
   (`CentralDeployment.AssetName`) drops the `#` and maps `/` to `.`: `Production`, `Paris.Shop.Staging`; the asset
@@ -237,6 +237,10 @@ A secret is never written in a configuration file: its place holds a **handle**,
 - **An engine that needs the value at build time** (the setup of a development database) resolves it with
   `AppBuilderContext.TryResolveSecret`, from the `#Dev/Secrets.json` file (`AppBuilderConfiguration.TryLoadDevSecrets`):
   the value is never projected nor burnt.
+- **An optional handle**, `{ "$SECRET?": "<Name>" }`, names a secret that may be missing: the host then leaves its path
+  absent, as if nothing were configured there (a one-time enlistment ticket, a feature activated by its secret). The
+  deployment, not the code, chooses it: the rules of a handle apply (`"<path>:$SECRET?"` in the flattened configuration,
+  projected and burnt as is).
 
 The builder checks them (`AppBuilderConfiguration.CheckSecrets`) with the restrictions.
 

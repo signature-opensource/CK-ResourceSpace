@@ -127,7 +127,7 @@ public sealed partial class AppBuilderConfiguration
             foreach( var c in s.GetChildren() )
             {
                 var path = prefix.Length == 0 ? c.Key : $"{prefix}:{c.Key}";
-                if( c.Value != null && !c.Key.Equals( ConfigurationSecret.HandleKey, StringComparison.OrdinalIgnoreCase ) )
+                if( c.Value != null && !ConfigurationSecret.IsHandleKey( c.Key, out _ ) )
                 {
                     yield return (path, c.Value);
                 }
@@ -146,7 +146,7 @@ public sealed partial class AppBuilderConfiguration
         bool success = true;
         foreach( var c in section.GetChildren() )
         {
-            if( c.Key.Equals( ConfigurationSecret.HandleKey, StringComparison.OrdinalIgnoreCase ) )
+            if( ConfigurationSecret.IsHandleKey( c.Key, out _ ) )
             {
                 if( c.Value != null && c.Value.Contains( '{' ) )
                 {
@@ -177,7 +177,7 @@ public sealed partial class AppBuilderConfiguration
                 }
                 if( section.GetChildren().Skip( 1 ).Any() )
                 {
-                    monitor.Error( $"\"{section.Path}\" is a secret handle: \"{ConfigurationSecret.HandleKey}\" must be its only key." );
+                    monitor.Error( $"\"{section.Path}\" is a secret handle: \"{c.Key}\" must be its only key." );
                     success = false;
                 }
             }

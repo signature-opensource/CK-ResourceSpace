@@ -63,6 +63,26 @@ public class ConfigurationSecretTests
     }
 
     [Test]
+    public void an_optional_handle_is_burnt_as_an_optional_handle()
+    {
+        var app = Load( """
+            {
+              "App": {
+                "FullName": "Sample/$Back",
+                "Local": { "Ticket": { "$SECRET?": "Enlist:Back" }, "Key": { "$SECRET": "Back:Key" } },
+                "$LOCK": { "Local:Ticket": "Compile", "Local:Key": "Compile" }
+              }
+            }
+            """ );
+        var back = app.Apps.Single();
+        DeclareParty( back );
+        app.ApplyLocks( TestHelper.Monitor ).ShouldBeTrue();
+        app.CheckSecrets( TestHelper.Monitor ).ShouldBeTrue();
+        back.BinPathConfiguration.CompiledValues["CK-AppIdentity:Local:Ticket:$SECRET?"].ShouldBe( "Enlist:Back" );
+        back.BinPathConfiguration.CompiledValues["CK-AppIdentity:Local:Key:$SECRET"].ShouldBe( "Back:Key" );
+    }
+
+    [Test]
     public void a_projected_handle_is_burnt_by_the_lock_of_the_value_it_replaces()
     {
         var app = Load( """
@@ -90,6 +110,8 @@ public class ConfigurationSecretTests
     [TestCase( """{ "$SECRET": { "Name": "A" } }""", "Invalid secret name" )]
     [TestCase( """{ "$SECRET": "A", "Other": 3 }""", "must be its only key" )]
     [TestCase( """{ "$SECRET": "Back:{Name}:Key" }""", "has a placeholder: only the handles of a fleet App" )]
+    [TestCase( """{ "$SECRET?": "Bad Name" }""", "Invalid secret name" )]
+    [TestCase( """{ "$SECRET?": "A", "Other": 3 }""", "\"$SECRET?\" must be its only key" )]
     public void an_invalid_handle_is_an_error( string handle, string message )
     {
         var app = Load( $$"""

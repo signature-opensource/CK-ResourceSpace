@@ -95,12 +95,18 @@ public sealed partial class AppBuilderConfiguration
         readonly HashSet<string> _hostLocks;
         bool _success;
 
+        // A handle: its key ("$SECRET" or "$SECRET?") and the name of the secret.
+        readonly record struct SecretHandle( string Key, string Name )
+        {
+            public override string ToString() => Name;
+        }
+
         sealed class Locked
         {
             public ConfigurationLevel Level;
             public string? Value;
-            // The name of the secret when the value is a handle ({ "$SECRET": "<Name>" }).
-            public string? Handle;
+            // The handle when the value is a secret ({ "$SECRET": "<Name>" } or { "$SECRET?": "<Name>" }).
+            public SecretHandle? Handle;
             public bool IsRequired;
             public bool IsInit;
         }
@@ -236,7 +242,7 @@ public sealed partial class AppBuilderConfiguration
                             resolved = v;
                             break;
                         }
-                        if( Handle( fc ) is string h )
+                        if( Handle( fc ) is SecretHandle h )
                         {
                             resolvedHandle = h;
                             break;
@@ -299,7 +305,7 @@ public sealed partial class AppBuilderConfiguration
         }
 
         // Returns true when the value is an Init value of the host (not a compile key nor an aspect's value).
-        bool Record( string path, ConfigurationLevel level, string? value, string? handle, bool isRequired, string source )
+        bool Record( string path, ConfigurationLevel level, string? value, SecretHandle? handle, bool isRequired, string source )
         {
             ConfigurationLevel capability;
             bool isInit = false;
@@ -351,7 +357,7 @@ public sealed partial class AppBuilderConfiguration
             {
                 if( l.Level != ConfigurationLevel.Compile || !l.IsInit ) continue;
                 // A secret burns its handle, never its value: the host resolves it when it starts.
-                if( l.Handle != null ) b.CompiledValues[$"{_app.ToHostPath( path )}:{ConfigurationSecret.HandleKey}"] = l.Handle;
+                if( l.Handle is SecretHandle h ) b.CompiledValues[$"{_app.ToHostPath( path )}:{h.Key}"] = h.Name;
                 else b.CompiledValues[_app.ToHostPath( path )] = l.Value;
                 _app.AddBurntKey( path );
             }
@@ -412,7 +418,12 @@ public sealed partial class AppBuilderConfiguration
 
         string? Value( string path ) => _root.TryGetSection( path )?.Value;
 
-        string? Handle( string path ) => _root.TryGetSection( $"{path}:{ConfigurationSecret.HandleKey}" )?.Value;
+        SecretHandle? Handle( string path )
+        {
+            if( _root.TryGetSection( $"{path}:{ConfigurationSecret.HandleKey}" )?.Value is string name ) return new SecretHandle( ConfigurationSecret.HandleKey, name );
+            if( _root.TryGetSection( $"{path}:{ConfigurationSecret.OptionalHandleKey}" )?.Value is string optional ) return new SecretHandle( ConfigurationSecret.OptionalHandleKey, optional );
+            return null;
+        }
 
         static string Combine( string a, string b ) => a.Length == 0 ? b : $"{a}:{b}";
 
