@@ -72,14 +72,16 @@ projection.
 ```jsonc
 {
   "Domain": "Sample/Auth3",
+  "GlobalDomainPrefix": "Sample",
   // The defaults of every App: merged in each App, the App wins (the objects are merged).
   "Defaults": { "App": { "Logging": { "LogLevel": { "Default": "Warning" } } } },
   // The builders, keyed by the path of their folder.
   "Builders": {
-    "Auth3/Auth3.Builder": { "Aspects": { "SqlServer": { ... } }, "App": { "Local": { ... } } },
-    "Front/Front.Builder": { "App": { "Local": { ... } } }
+    "Auth3/Auth3.Auth3.Builder": { "Aspects": { "SqlServer": { ... } }, "App": { "Local": { ... } } },
+    "Front/Auth3.Front.Builder": { "App": { "Local": { ... } } }
   },
-  // The links between the parties (read by the AppIdentity contributor).
+  // The links between the parties; "Domain", "GlobalDomainPrefix" and "Links" are read by the AppIdentity contributor
+  // (the name of an App is the identity of its party: "Auth3.Front" is "$Front" of "Sample/Auth3").
   "Links": [ ... ]
 }
 ```
@@ -108,7 +110,7 @@ Deployment/
 ```
 
 - **Its name is its path** (`#Production`, `Paris/Shop/#Staging`). Its `Domain` and `Environment` come from it: writing them
-  is an error, and so are a `#Dev` folder and a path that spells the central domain (it is `Deployment/#X`). A folder
+  is an error (and writing `GlobalDomainPrefix`, which names the projects of the solution), and so are a `#Dev` folder and a path that spells the central domain (it is `Deployment/#X`). A folder
   whose name starts with `.`, `Deployment/Assets`, and a folder without a `#` folder below it are ignored.
 - **Its `ckonf.json` is an overlay** (JSON Merge Patch, RFC 7396, case insensitive): an object merges, `null` removes, any
   other value (an array included) replaces. It overlays the central configuration, or the deployment that its

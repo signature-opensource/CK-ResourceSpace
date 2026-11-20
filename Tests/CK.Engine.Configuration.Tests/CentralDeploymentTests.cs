@@ -160,6 +160,7 @@ public class CentralDeploymentTests
     }
 
     [TestCase( """{ "Domain": "X" }""", "\"Domain\" can't be written" )]
+    [TestCase( """{ "GlobalDomainPrefix": "X" }""", "\"GlobalDomainPrefix\" can't be written" )]
     [TestCase( """{ "$BASE": "#Unknown" }""", "there is no such deployment" )]
     [TestCase( """{ "$BASE": 3 }""", "Invalid \"$BASE\"" )]
     [TestCase( """{ "$PER_DEPLOYMENT": "Demo" }""", "an array of patterns" )]

@@ -165,6 +165,11 @@ public sealed class CentralDeployment
                     monitor.Error( $"\"{key}\" can't be written in '{file}': the domain and the environment of a deployment are its path in the \"{FolderName}\" folder." );
                     success = false;
                 }
+                else if( key.Equals( "GlobalDomainPrefix", StringComparison.OrdinalIgnoreCase ) )
+                {
+                    monitor.Error( $"\"{key}\" can't be written in '{file}': it is how the solution names its projects, written in its central configuration only." );
+                    success = false;
+                }
             }
             raws.Add( name, new Raw( name, folder, domain, environment, baseName, overlay, markers ) );
         }
