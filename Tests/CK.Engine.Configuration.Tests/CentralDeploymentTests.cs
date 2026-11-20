@@ -263,6 +263,48 @@ public class CentralDeploymentTests
         ShouldFail( Create( _twoBuilders, ("#Production", overlay) ), message );
     }
 
+    [Test]
+    public void the_manifest_of_a_fleet_lists_its_instances()
+    {
+        var production = Load( Create( _twoBuilders, ("#Production", "{}") ) ).Single();
+        NormalizedPath root = Path.Combine( Path.GetTempPath(), "CK.AppBuilder.Tests", Guid.NewGuid().ToString( "N" ) );
+        Directory.CreateDirectory( root );
+        File.WriteAllText( root.AppendPart( "Sample.slnx" ), "<Solution />" );
+        var builder = root.AppendPart( "Backs.Builder" );
+        Directory.CreateDirectory( builder );
+        File.WriteAllText( builder.AppendPart( "ckonf.json" ), """
+            {
+              "App": {
+                "FullName": "Sample/$Backs-{Name}/#Production",
+                "InstanceCount": 2,
+                "MaxInstanceCount": 4,
+                "Local": { "Port": "tcp:0.0.0.0:{38000+Index}" },
+                "Db": { "$SECRET": "Db" }
+              }
+            }
+            """ );
+        Directory.CreateDirectory( root.AppendPart( "Backs.App" ) );
+        Directory.CreateDirectory( root.AppendPart( "Backs.Host" ) );
+        var app = AppBuilderConfiguration.Load( TestHelper.Monitor, builder, "bin/Debug/net10.0", null, out _ ).ShouldNotBeNull();
+        var keys = new Dictionary<string, IReadOnlyList<(string, string)>> { { "Backs", [("Local:Port", "test")] } };
+        app.WriteDeploymentManifests( TestHelper.Monitor, production, keys ).ShouldBeTrue();
+
+        var m = System.Text.Json.Nodes.JsonNode.Parse( File.ReadAllText( root.Combine( "Backs.Host/Deployment.json" ) ) )!;
+        m["FullName"]!.GetValue<string>().ShouldBe( "Sample/$Backs-{Name}/#Production" );
+        m["Deployment"]!.GetValue<string>().ShouldBe( "#Production" );
+        m["Secrets"]!.AsArray().Select( s => s!.GetValue<string>() ).ShouldBe( ["Db"] );
+        m["PerDeployment"]!["Local:Port"]!.GetValue<string>().ShouldBe( "tcp:0.0.0.0:{38000+Index}" );
+        var configured = m["Instances"]!["Configured"]!.AsArray();
+        configured.Count.ShouldBe( 2 );
+        configured[1]!["Name"]!.GetValue<string>().ShouldBe( "2" );
+        configured[1]!["Index"]!.GetValue<int>().ShouldBe( 2 );
+        configured[1]!["FullName"]!.GetValue<string>().ShouldBe( "Sample/$Backs-2/#Production" );
+        configured[1]!["Arguments"]![0]!.GetValue<string>().ShouldBe( "--Instance=2" );
+        configured[1]!["PerDeployment"]!["Local:Port"]!.GetValue<string>().ShouldBe( "tcp:0.0.0.0:38002" );
+        m["Instances"]!["Dynamic"]!["From"]!.GetValue<int>().ShouldBe( 3 );
+        m["Instances"]!["Dynamic"]!["To"]!.GetValue<int>().ShouldBe( 4 );
+    }
+
     // What the AppIdentity contributor claims.
     sealed class IdentityContributor : IAppBuilderContributor
     {

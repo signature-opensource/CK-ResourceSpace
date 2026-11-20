@@ -29,7 +29,9 @@ public sealed partial class AppBuilderConfiguration
     /// project: the full name of its party, the deployment (its name, its environment, its <c>"$BASE"</c> chain), the
     /// names of the secrets that the host needs (the handles of its configuration and of its burnt values), and its values
     /// per deployment (its addresses, its public URLs...: the values covered by the keys per deployment of the App).
-    /// CK.AppDeployment adds the version.
+    /// The manifest of a fleet (a template App: "InstanceCount", "Instances" or "MaxInstanceCount") lists its instances:
+    /// each configured one with its full name, its start arguments and its values per deployment resolved, and the
+    /// indexes of the dynamic ones of an Opened fleet. CK.AppDeployment adds the version.
     /// </summary>
     /// <param name="monitor">The monitor to use.</param>
     /// <param name="deployment">The deployment.</param>
@@ -48,14 +50,12 @@ public sealed partial class AppBuilderConfiguration
                 if( ConfigurationPathPattern.TryParse( text, out var p, out _ ) ) patterns.Add( p );
             }
             var secrets = new SortedSet<string>( StringComparer.OrdinalIgnoreCase );
-            var values = new JsonObject();
             var handleSuffix = ":" + ConfigurationSecret.HandleKey;
-            foreach( var (path, value) in a.Configuration.AsEnumerable( makePathsRelative: true ).OrderBy( kv => kv.Key, StringComparer.OrdinalIgnoreCase ) )
+            foreach( var (path, value) in a.Configuration.AsEnumerable( makePathsRelative: true ) )
             {
-                if( value == null ) continue;
-                if( path.EndsWith( handleSuffix, StringComparison.OrdinalIgnoreCase ) ) secrets.Add( value );
-                if( patterns.Any( p => p.Covers( path ) ) ) values[path] = value;
+                if( value != null && path.EndsWith( handleSuffix, StringComparison.OrdinalIgnoreCase ) ) secrets.Add( value );
             }
+            var values = PerDeploymentValues( a.Configuration, patterns );
             foreach( var (path, value) in a.ProjectedValues.Concat( a.BinPathConfiguration.CompiledValues ) )
             {
                 if( path.EndsWith( handleSuffix, StringComparison.OrdinalIgnoreCase ) ) secrets.Add( value );
@@ -71,6 +71,39 @@ public sealed partial class AppBuilderConfiguration
                 ["Secrets"] = new JsonArray( secrets.Select( s => (JsonNode?)s ).ToArray() ),
                 ["PerDeployment"] = values
             };
+            // A fleet: its instances.
+            if( !ConfigurationTemplate.TryReadInstances( monitor, a.Configuration, a.Name, out var instances ) )
+            {
+                success = false;
+                continue;
+            }
+            if( instances != null )
+            {
+                var configured = new JsonArray();
+                foreach( var i in instances )
+                {
+                    var resolved = ConfigurationTemplate.Instantiate( monitor, a.Configuration, i );
+                    if( resolved == null )
+                    {
+                        success = false;
+                        continue;
+                    }
+                    configured.Add( new JsonObject
+                    {
+                        ["Name"] = i.Name,
+                        ["Index"] = i.Index,
+                        ["FullName"] = resolved["FullName"],
+                        ["Arguments"] = new JsonArray( (JsonNode?)$"--Instance={i.Name}" ),
+                        ["PerDeployment"] = PerDeploymentValues( resolved, patterns )
+                    } );
+                }
+                var o = new JsonObject { ["Configured"] = configured };
+                if( instances.MaxInstanceCount is int max && max > instances.Count )
+                {
+                    o["Dynamic"] = new JsonObject { ["From"] = instances.Count + 1, ["To"] = max };
+                }
+                manifest["Instances"] = o;
+            }
             var file = a.HostProjectPath.AppendPart( DeploymentManifestFileName );
             try
             {
@@ -84,5 +117,16 @@ public sealed partial class AppBuilderConfiguration
             }
         }
         return success;
+
+        // The values of a configuration covered by the keys per deployment, by their relative path.
+        static JsonObject PerDeploymentValues( Microsoft.Extensions.Configuration.IConfiguration configuration, List<ConfigurationPathPattern> patterns )
+        {
+            var values = new JsonObject();
+            foreach( var (path, value) in configuration.AsEnumerable( makePathsRelative: true ).OrderBy( kv => kv.Key, StringComparer.OrdinalIgnoreCase ) )
+            {
+                if( value != null && patterns.Any( p => p.Covers( path ) ) ) values[path] = value;
+            }
+            return values;
+        }
     }
 }

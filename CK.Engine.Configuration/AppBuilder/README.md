@@ -140,7 +140,9 @@ Deployment/
   the copy next to the generated builder. Its `AppBuilderContext.Deployment` is the deployment: `TryResolveSecret` fails
   (the build of a deployment never reads a secret, never touches a database). It writes the manifest of each host,
   `Deployment.json` (`AppBuilderConfiguration.WriteDeploymentManifests`): the full name, the deployment and its bases, the
-  names of the secrets the host needs, its values per deployment. The asset name of a deployment
+  names of the secrets the host needs, its values per deployment; for a fleet, its instances (each configured one with
+  its full name, its start arguments `--Instance=Name` and its values per deployment resolved, and the indexes of the
+  dynamic ones of an Opened fleet). The asset name of a deployment
   (`CentralDeployment.AssetName`) drops the `#` and maps `/` to `.`: `Production`, `Paris.Shop.Staging`.
 
 ## The aspects
