@@ -197,6 +197,20 @@ public class CentralDeploymentTests
     }
 
     [Test]
+    public void the_party_keys_are_App_patterns_on_the_anchors_of_their_kind()
+    {
+        var engine = new EngineConfiguration();
+        var app = new AppConfiguration( "Front", "C:/Front.App", "C:/Front.Host", ImmutableConfigurationSection.CreateFromJson( "Apps", "Front", "{}" ), engine.FirstBinPath );
+        app.DeclareAnchor( "Local", ["Party"], ["Defaults"] );
+        app.DeclareAnchor( "Parties:0", ["Party", "Remote"], ["Defaults"] );
+        app.DeclareAnchor( "Parties:1", ["Party", "Remote", "RemoteTemplate"] );
+        app.AddPerDeploymentPartyKey( "Remote", "Address" );
+        app.AddPerDeploymentPartyKey( "remote", "address" );
+        AppBuilderConfiguration.CollectPerDeploymentKeys( TestHelper.Monitor, app, [], out var keys ).ShouldBeTrue();
+        keys.Select( k => k.Pattern ).ShouldBe( ["Parties:[*]:Address", "Defaults:Address"] );
+    }
+
+    [Test]
     public void merge_patch_follows_RFC_7396()
     {
         var target = System.Text.Json.Nodes.JsonNode.Parse( """{ "a": "b", "c": { "d": "e", "f": "g" }, "arr": [1, 2] }""",

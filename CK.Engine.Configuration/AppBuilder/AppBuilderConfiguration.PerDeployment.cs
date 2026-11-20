@@ -10,7 +10,8 @@ public sealed partial class AppBuilderConfiguration
     /// Collects the keys per deployment of an App (see <see cref="CentralDeployment"/>), as patterns relative to the App:
     /// its <see cref="AppConfiguration.PerDeploymentKeys"/> and the declarations of its configurable types
     /// (<c>[ConfigurationPerDeployment( "Party:Urls" )]</c>: the path of each anchor of the kind and of its fallbacks, then
-    /// the section of the type, then the rest of the path).
+    /// the section of the type, then the rest of the path) and its <see cref="AppConfiguration.PerDeploymentPartyKeys"/>
+    /// (the path of each anchor of the kind and of its fallbacks, then the path of the property).
     /// </summary>
     /// <param name="monitor">The monitor to use.</param>
     /// <param name="app">The App (its anchors are declared).</param>
@@ -23,6 +24,10 @@ public sealed partial class AppBuilderConfiguration
                                                  out List<(string Pattern, string Source)> keys )
     {
         keys = app.PerDeploymentKeys.Select( k => (k, $"the key '{k}' of {app}") ).ToList();
+        foreach( var (kind, path) in app.PerDeploymentPartyKeys )
+        {
+            AddAnchorKeys( app, keys, kind, path, $"the key '{path}' of the parties '{kind}' of {app}" );
+        }
         bool success = true;
         foreach( var p in packageKeys )
         {
@@ -36,19 +41,25 @@ public sealed partial class AppBuilderConfiguration
             }
             foreach( var section in p.Sections )
             {
-                foreach( var a in app.Anchors.Where( a => a.Kinds.Contains( parts[0] ) ) )
-                {
-                    foreach( var anchorPath in a.Fallbacks.Prepend( a.Path ) )
-                    {
-                        // An anchor in an array ("Parties:0") is any item: a pattern has no index.
-                        var objectPath = string.Join( ':', anchorPath.Split( ':' ).Select( s => ConfigurationPathPattern.IsIndex( s ) ? "[*]" : s ) );
-                        var k = (objectPath.Length == 0 ? $"{section}:{parts[1]}" : $"{objectPath}:{section}:{parts[1]}", source);
-                        if( !keys.Contains( k ) ) keys.Add( k );
-                    }
-                }
+                AddAnchorKeys( app, keys, parts[0], $"{section}:{parts[1]}", source );
             }
         }
         return success;
+
+        // The path in each anchor of the kind and in its fallbacks.
+        static void AddAnchorKeys( AppConfiguration app, List<(string Pattern, string Source)> keys, string kind, string path, string source )
+        {
+            foreach( var a in app.Anchors.Where( a => a.Kinds.Contains( kind ) ) )
+            {
+                foreach( var anchorPath in a.Fallbacks.Prepend( a.Path ) )
+                {
+                    // An anchor in an array ("Parties:0") is any item: a pattern has no index.
+                    var objectPath = string.Join( ':', anchorPath.Split( ':' ).Select( s => ConfigurationPathPattern.IsIndex( s ) ? "[*]" : s ) );
+                    var k = (objectPath.Length == 0 ? path : $"{objectPath}:{path}", source);
+                    if( !keys.Contains( k ) ) keys.Add( k );
+                }
+            }
+        }
     }
 }
 

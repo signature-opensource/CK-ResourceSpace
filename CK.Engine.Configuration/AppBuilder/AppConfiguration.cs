@@ -25,6 +25,7 @@ public sealed class AppConfiguration
     readonly HashSet<string> _runValues;
     readonly HashSet<string> _secretKeys;
     readonly HashSet<string> _perDeploymentKeys;
+    readonly HashSet<(string Kind, string Path)> _perDeploymentPartyKeys;
 
     /// <summary>
     /// Initializes a new App. The builder creates them from "ckonf.json"; this is public for the tests of the contributors.
@@ -49,6 +50,7 @@ public sealed class AppConfiguration
         _compileKeys = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
         _secretKeys = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
         _perDeploymentKeys = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
+        _perDeploymentPartyKeys = new HashSet<(string, string)>( KindPathComparer.Instance );
         _declarationKeys = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
         _projectedSections = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase );
         _projectedValues = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase );
@@ -163,6 +165,37 @@ public sealed class AppConfiguration
     /// Gets the keys declared by <see cref="AddPerDeploymentKey(string)"/>.
     /// </summary>
     public IReadOnlyCollection<string> PerDeploymentKeys => _perDeploymentKeys;
+
+    /// <summary>
+    /// Declares that a property of the parties of a kind is "per deployment" (see <see cref="CentralDeployment"/>): the
+    /// "Address" of a remote is <c>AddPerDeploymentPartyKey( "Remote", "Address" )</c>. The property is directly in each
+    /// anchor of the kind (and in its fallbacks), not in the section of a feature (this is what
+    /// <c>[ConfigurationPerDeployment]</c> declares).
+    /// </summary>
+    /// <param name="kind">The kind of the anchors (see <see cref="DeclareAnchor"/>).</param>
+    /// <param name="path">The path of the property in the party (with ':' separators, patterns allowed).</param>
+    public void AddPerDeploymentPartyKey( string kind, string path )
+    {
+        Throw.CheckNotNullOrWhiteSpaceArgument( kind );
+        Throw.CheckNotNullOrWhiteSpaceArgument( path );
+        _perDeploymentPartyKeys.Add( (kind, path) );
+    }
+
+    /// <summary>
+    /// Gets the keys declared by <see cref="AddPerDeploymentPartyKey(string, string)"/>.
+    /// </summary>
+    public IReadOnlyCollection<(string Kind, string Path)> PerDeploymentPartyKeys => _perDeploymentPartyKeys;
+
+    sealed class KindPathComparer : IEqualityComparer<(string Kind, string Path)>
+    {
+        public static readonly KindPathComparer Instance = new();
+
+        public bool Equals( (string Kind, string Path) x, (string Kind, string Path) y )
+            => StringComparer.OrdinalIgnoreCase.Equals( x.Kind, y.Kind ) && StringComparer.OrdinalIgnoreCase.Equals( x.Path, y.Path );
+
+        public int GetHashCode( (string Kind, string Path) o )
+            => HashCode.Combine( StringComparer.OrdinalIgnoreCase.GetHashCode( o.Kind ), StringComparer.OrdinalIgnoreCase.GetHashCode( o.Path ) );
+    }
 
     /// <summary>
     /// Declares that a key of the <see cref="Configuration"/> is projected in a section of the host's "appsettings.json":

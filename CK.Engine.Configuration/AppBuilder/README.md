@@ -122,7 +122,8 @@ Deployment/
     central configuration or of an overlay (the patterns are relative to the object; the markers are removed when the
     file is read, they are never projected);
   - by the code: `[ConfigurationPerDeployment( "Party:Urls" )]` on a configurable type (built like a `[ConfigurationLock]`
-    path), `AppConfiguration.AddPerDeploymentKey( path )` for a reader of an App, and
+    path), `AppConfiguration.AddPerDeploymentPartyKey( "Remote", "Address" )` for a property of the parties of a kind
+    (in each anchor of the kind and its fallbacks), `AppConfiguration.AddPerDeploymentKey( path )` for a reader of an App, and
     `CentralProjectionContext.AddPerDeploymentKey( "Links:[*]:Link:Address" )` for a contributor's central keys.
 
   A value of an App is the one of its entry in `"Builders"`, otherwise the one of `"Defaults:App"`: the deployment writes
