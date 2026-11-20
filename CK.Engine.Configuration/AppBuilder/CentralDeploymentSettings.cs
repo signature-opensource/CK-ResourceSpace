@@ -16,6 +16,8 @@ namespace CK.Setup;
 /// "Deployment": {
 ///   // The builders to deploy (their paths in "Builders"): all by default.
 ///   "Builders": [ "Front/Auth3.Front.Builder", "Admin/Auth3.Admin.Builder" ],
+///   // One asset for the deployment ("Production.zip") instead of one per App ("Production-Auth3.Front.zip"...).
+///   "SingleZipAsset": false,
 ///   // The MSBuild properties of the publication of every host, applied as-is ("dotnet publish" defaults otherwise).
 ///   "Publish": { "RuntimeIdentifier": "linux-x64", "SelfContained": true, "PublishSingleFile": true },
 ///   // The ones of an App (by its name), over them: an empty string resets a property (the SDK default).
@@ -32,10 +34,12 @@ public sealed partial class CentralDeploymentSettings
     readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> _apps;
 
     CentralDeploymentSettings( IReadOnlyList<string>? builders,
+                               bool singleZipAsset,
                                IReadOnlyDictionary<string, string> publish,
                                IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> apps )
     {
         Builders = builders;
+        SingleZipAsset = singleZipAsset;
         _publish = publish;
         _apps = apps;
     }
@@ -44,6 +48,7 @@ public sealed partial class CentralDeploymentSettings
     /// The default settings: all the builders, the defaults of "dotnet publish".
     /// </summary>
     public static readonly CentralDeploymentSettings Default = new( null,
+                                                                    false,
                                                                     new Dictionary<string, string>(),
                                                                     new Dictionary<string, IReadOnlyDictionary<string, string>>() );
 
@@ -51,6 +56,12 @@ public sealed partial class CentralDeploymentSettings
     /// Gets the paths of the builders to deploy, null for all of them.
     /// </summary>
     public IReadOnlyList<string>? Builders { get; }
+
+    /// <summary>
+    /// Gets whether the deployment is one asset ("Production.zip": a folder per App in it) instead of one per App
+    /// ("Production-Auth3.Front.zip": the host in it), the default.
+    /// </summary>
+    public bool SingleZipAsset { get; }
 
     /// <summary>
     /// Gets the MSBuild properties of the publication of every host (the <c>"Publish"</c> of the settings).
@@ -92,11 +103,12 @@ public sealed partial class CentralDeploymentSettings
         var key = CentralDeployment.SettingsKey;
         if( node is not JsonObject o )
         {
-            monitor.Error( $"Invalid \"{key}\" of {source}: an object is expected (\"Builders\", \"Publish\", \"Apps\")." );
+            monitor.Error( $"Invalid \"{key}\" of {source}: an object is expected (\"Builders\", \"SingleZipAsset\", \"Publish\", \"Apps\")." );
             return null;
         }
         bool success = true;
         List<string>? builders = null;
+        bool singleZipAsset = false;
         var publish = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase );
         var apps = new Dictionary<string, IReadOnlyDictionary<string, string>>( StringComparer.OrdinalIgnoreCase );
         foreach( var (k, value) in o )
@@ -120,6 +132,14 @@ public sealed partial class CentralDeploymentSettings
                         success = false;
                     }
                     else if( !builders.Contains( b.Path ) ) builders.Add( b.Path );
+                }
+            }
+            else if( k.Equals( "SingleZipAsset", StringComparison.OrdinalIgnoreCase ) )
+            {
+                if( value is not JsonValue v || !v.TryGetValue( out singleZipAsset ) )
+                {
+                    monitor.Error( $"Invalid \"{key}:SingleZipAsset\" of {source}: true or false is expected." );
+                    success = false;
                 }
             }
             else if( k.Equals( "Publish", StringComparison.OrdinalIgnoreCase ) )
@@ -158,11 +178,11 @@ public sealed partial class CentralDeploymentSettings
             }
             else
             {
-                monitor.Error( $"Unknown key \"{key}:{k}\" of {source}: \"Builders\", \"Publish\" and \"Apps\" are expected." );
+                monitor.Error( $"Unknown key \"{key}:{k}\" of {source}: \"Builders\", \"SingleZipAsset\", \"Publish\" and \"Apps\" are expected." );
                 success = false;
             }
         }
-        return success ? new CentralDeploymentSettings( builders, publish, apps ) : null;
+        return success ? new CentralDeploymentSettings( builders, singleZipAsset, publish, apps ) : null;
 
         static Dictionary<string, string>? ReadProperties( IActivityMonitor monitor, JsonNode? node, string source, ref bool success )
         {

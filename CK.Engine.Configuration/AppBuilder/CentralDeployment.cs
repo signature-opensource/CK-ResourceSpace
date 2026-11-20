@@ -108,6 +108,15 @@ public sealed class CentralDeployment
     public string AssetName => Name.Replace( "#", "" ).Replace( '/', '.' );
 
     /// <summary>
+    /// Gets the folder of the published host of an App in the assets (CKli zips each folder of the assets): by default,
+    /// one asset per App, "{AssetName}-{App}" ("Production-Auth3.Front"); with <see cref="CentralDeploymentSettings.SingleZipAsset"/>,
+    /// one asset for the deployment, "{AssetName}/{App}" ("Production/Auth3.Front").
+    /// </summary>
+    /// <param name="appName">The App name.</param>
+    /// <returns>The relative path of the folder.</returns>
+    public string GetAssetFolder( string appName ) => Settings.SingleZipAsset ? $"{AssetName}/{appName}" : $"{AssetName}-{appName}";
+
+    /// <summary>
     /// Gets the builders that this deployment builds (<see cref="CentralDeploymentSettings.Builders"/>, all by default), in
     /// the order of its configuration.
     /// </summary>

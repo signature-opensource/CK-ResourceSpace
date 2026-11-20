@@ -132,7 +132,7 @@ Deployment/
   the one it uses. `CentralDeployment.CheckPerDeployment` checks them (the builder runs it for its own Apps).
 - **The settings of a deployment** that are not configuration are its `"Deployment"` key (`CentralDeploymentSettings`;
   in the central configuration, the defaults of every deployment, merged like the rest): `"Builders"` (the builders to
-  deploy, all by default), `"Publish"` (the MSBuild properties of the publication of every host, applied as-is:
+  deploy, all by default), `"SingleZipAsset"` (one asset for the deployment instead of one per App), `"Publish"` (the MSBuild properties of the publication of every host, applied as-is:
   `{ "RuntimeIdentifier": "linux-x64", "SelfContained": true, "PublishSingleFile": true }`) and `"Apps"` (the ones of an
   App, over them: `"Apps": { "Auth3.Worker": { "Publish": { "PublishSingleFile": "" } } }`, an empty value resets a
   property). They are not modeled: only their shape is checked (`CentralDeploymentSettings.GetPublishProperties`).
@@ -147,7 +147,9 @@ Deployment/
   publication properties of the host, the names of the secrets the host needs, its values per deployment; for a fleet, its instances (each configured one with
   its full name, its start arguments `--Instance=Name` and its values per deployment resolved, and the indexes of the
   dynamic ones of an Opened fleet). The asset name of a deployment
-  (`CentralDeployment.AssetName`) drops the `#` and maps `/` to `.`: `Production`, `Paris.Shop.Staging`.
+  (`CentralDeployment.AssetName`) drops the `#` and maps `/` to `.`: `Production`, `Paris.Shop.Staging`; the asset
+  folder of an App (`CentralDeployment.GetAssetFolder`) is `Production-Auth3.Front` (one asset per App, the default) or
+  `Production/Auth3.Front` (`"SingleZipAsset": true`).
 
 ## The aspects
 

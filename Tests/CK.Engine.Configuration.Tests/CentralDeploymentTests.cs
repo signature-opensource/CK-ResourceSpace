@@ -240,6 +240,7 @@ public class CentralDeploymentTests
                                     {
                                       "Deployment": {
                                         "Builders": [ "Front/Front.Builder" ],
+                                        "SingleZipAsset": true,
                                         "Publish": { "RuntimeIdentifier": "linux-x64", "PublishSingleFile": null },
                                         "Apps": { "front": { "Publish": { "SelfContained": true, "TieredPGO": 1, "RuntimeIdentifier": "" } } }
                                       }
@@ -258,6 +259,7 @@ public class CentralDeploymentTests
                   .ShouldBe( ["RuntimeIdentifier=linux-x64", "SelfContained=false"] );
         production.DeployedBuilders.Select( b => b.Path ).ShouldBe( ["Front/Front.Builder"] );
         production.AssetName.ShouldBe( "Production" );
+        production.GetAssetFolder( "Front" ).ShouldBe( "Production/Front" );
         production.Environment.ShouldBe( "#Production" );
 
         var staging = deployments.Single( d => d.Name == "Paris/Shop/#Staging" );
@@ -266,11 +268,13 @@ public class CentralDeploymentTests
                .ShouldBe( ["PublishSingleFile=true", "SelfContained=false"] );
         staging.DeployedBuilders.Select( b => b.Path ).ShouldBe( ["Front/Front.Builder", "Auth3/Auth3.Builder"] );
         staging.AssetName.ShouldBe( "Paris.Shop.Staging" );
+        staging.GetAssetFolder( "Front" ).ShouldBe( "Paris.Shop.Staging-Front" );
         staging.Environment.ShouldBe( "#Staging" );
     }
 
     [TestCase( """{ "Deployment": { "Builders": [ "Nope/Nope.Builder" ] } }""", "Invalid builder '\"Nope/Nope.Builder\"'" )]
     [TestCase( """{ "Deployment": { "Publish": { "Bad Name": 1 } } }""", "Invalid MSBuild property name 'Bad Name'" )]
+    [TestCase( """{ "Deployment": { "SingleZipAsset": "yes" } }""", "Invalid \"Deployment:SingleZipAsset\"" )]
     [TestCase( """{ "Deployment": { "Publish": { "X": [ 1 ] } } }""", "Invalid value of 'X'" )]
     [TestCase( """{ "Deployment": { "Apps": { "Nope": { "Publish": {} } } } }""", "Unknown App 'Nope'" )]
     [TestCase( """{ "Deployment": { "Apps": { "Front": { "Other": {} } } } }""", "an object with \"Publish\" is expected" )]
