@@ -279,7 +279,8 @@ public class CentralDeploymentTests
                 "InstanceCount": 2,
                 "MaxInstanceCount": 4,
                 "Local": { "Port": "tcp:0.0.0.0:{38000+Index}" },
-                "Db": { "$SECRET": "Db" }
+                "Db": { "$SECRET": "Db" },
+                "Key": { "$SECRET": "Backs:{Name}:Key" }
               }
             }
             """ );
@@ -292,7 +293,7 @@ public class CentralDeploymentTests
         var m = System.Text.Json.Nodes.JsonNode.Parse( File.ReadAllText( root.Combine( "Backs.Host/Deployment.json" ) ) )!;
         m["FullName"]!.GetValue<string>().ShouldBe( "Sample/$Backs-{Name}/#Production" );
         m["Deployment"]!.GetValue<string>().ShouldBe( "#Production" );
-        m["Secrets"]!.AsArray().Select( s => s!.GetValue<string>() ).ShouldBe( ["Db"] );
+        m["Secrets"]!.AsArray().Select( s => s!.GetValue<string>() ).ShouldBe( ["Backs:{Name}:Key", "Db"] );
         m["PerDeployment"]!["Local:Port"]!.GetValue<string>().ShouldBe( "tcp:0.0.0.0:{38000+Index}" );
         var configured = m["Instances"]!["Configured"]!.AsArray();
         configured.Count.ShouldBe( 2 );
@@ -300,6 +301,7 @@ public class CentralDeploymentTests
         configured[1]!["Index"]!.GetValue<int>().ShouldBe( 2 );
         configured[1]!["FullName"]!.GetValue<string>().ShouldBe( "Sample/$Backs-2/#Production" );
         configured[1]!["Arguments"]![0]!.GetValue<string>().ShouldBe( "--Instance=2" );
+        configured[1]!["Secrets"]!.AsArray().Select( s => s!.GetValue<string>() ).ShouldBe( ["Backs:2:Key", "Db"] );
         configured[1]!["PerDeployment"]!["Local:Port"]!.GetValue<string>().ShouldBe( "tcp:0.0.0.0:38002" );
         m["Instances"]!["Dynamic"]!["From"]!.GetValue<int>().ShouldBe( 3 );
         m["Instances"]!["Dynamic"]!["To"]!.GetValue<int>().ShouldBe( 4 );

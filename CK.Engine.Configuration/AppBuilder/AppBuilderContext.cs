@@ -56,6 +56,12 @@ public sealed class AppBuilderContext
             monitor.Error( $"The secret '{name}' is required by the build of the deployment '{Deployment.Name}': the build of a deployment never reads a secret (its value is given to the deployed host)." );
             return false;
         }
+        if( name.Contains( '{' ) )
+        {
+            value = null;
+            monitor.Error( $"The secret '{name}' is required by the build: its name uses the placeholders of the instances of a fleet, and the build is the one of all its instances." );
+            return false;
+        }
         if( _devSecrets.TryGetValue( name, out value ) ) return true;
         monitor.Error( $"The secret '{name}' is required by the build: its value is missing from \"#Dev/{ConfigurationSecret.DevFileName}\" (its root is the content of the \"{ConfigurationSecret.SectionName}\" section)." );
         return false;

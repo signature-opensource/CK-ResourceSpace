@@ -12,7 +12,10 @@ public sealed partial class AppBuilderConfiguration
     /// Checks the secrets (see <see cref="ConfigurationSecret"/>) of the Apps and of the Builder aspects: a handle
     /// (<c>{ "$SECRET": "&lt;Name&gt;" }</c>) must be alone in its object and have a valid name; a plain value where a
     /// secret is declared (<see cref="AppConfiguration.AddSecretKey(string)"/>, <see cref="ConfigurationSecretAttribute"/>)
-    /// is reported: the development configuration accepts it, a handle keeps it out of the files.
+    /// is reported: the development configuration accepts it, a handle keeps it out of the files. The name of a handle of
+    /// a fleet App (a template: "InstanceCount", "Instances" or "MaxInstanceCount") may use its placeholders
+    /// (<c>"Worker:{Name}:Key"</c>: a secret per instance): the name of each instance is checked (the configured ones and
+    /// the first dynamic one of an Opened fleet).
     /// Called once the contributors have contributed (they declared the anchors and the secret keys).
     /// </summary>
     /// <param name="monitor">The monitor to use.</param>
@@ -20,7 +23,7 @@ public sealed partial class AppBuilderConfiguration
     /// <returns>True on success, false on error (errors are logged).</returns>
     public bool CheckSecrets( IActivityMonitor monitor, Func<AppConfiguration, IEnumerable<PackageConfigurationSecret>>? packageSecrets = null )
     {
-        bool success = _aspects.Section == null || CheckHandles( monitor, _aspects.Section );
+        bool success = _aspects.Section == null || CheckHandles( monitor, _aspects.Section, _aspects.Section, null );
         foreach( var a in _apps )
         {
             success &= CheckSecrets( monitor, a, packageSecrets?.Invoke( a ) ?? [] );
@@ -38,7 +41,23 @@ public sealed partial class AppBuilderConfiguration
     /// <returns>True on success, false on error (errors are logged).</returns>
     public static bool CheckSecrets( IActivityMonitor monitor, AppConfiguration app, IEnumerable<PackageConfigurationSecret> packageSecrets )
     {
-        if( !CheckHandles( monitor, app.Configuration ) ) return false;
+        // A fleet: the names of its handles may use its placeholders, they are checked for each instance.
+        if( !ConfigurationTemplate.TryReadInstances( monitor, app.Configuration, app.Name, out var instances ) ) return false;
+        List<ImmutableConfigurationSection>? resolved = null;
+        if( instances != null )
+        {
+            resolved = new List<ImmutableConfigurationSection>();
+            var checkedInstances = instances.IsOpened && instances.MaxInstanceCount > instances.Count
+                                    ? instances.Append( instances.CreateDynamic( instances.Count + 1 ) )
+                                    : instances;
+            foreach( var i in checkedInstances )
+            {
+                var r = ConfigurationTemplate.Instantiate( monitor, app.Configuration, i );
+                if( r == null ) return false;
+                resolved.Add( r );
+            }
+        }
+        if( !CheckHandles( monitor, app.Configuration, app.Configuration, resolved ) ) return false;
         bool success = true;
         var root = app.Configuration;
         var reported = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
@@ -117,14 +136,41 @@ public sealed partial class AppBuilderConfiguration
         }
     }
 
-    static bool CheckHandles( IActivityMonitor monitor, ImmutableConfigurationSection section )
+    // The handles of a section. The resolved sections are the ones of the instances of a fleet App (null otherwise): a name
+    // with placeholders must be valid once resolved for each of them.
+    static bool CheckHandles( IActivityMonitor monitor,
+                              ImmutableConfigurationSection section,
+                              ImmutableConfigurationSection root,
+                              IReadOnlyList<ImmutableConfigurationSection>? resolved )
     {
         bool success = true;
         foreach( var c in section.GetChildren() )
         {
             if( c.Key.Equals( ConfigurationSecret.HandleKey, StringComparison.OrdinalIgnoreCase ) )
             {
-                if( !ConfigurationSecret.IsValidName( c.Value ) )
+                if( c.Value != null && c.Value.Contains( '{' ) )
+                {
+                    if( resolved == null )
+                    {
+                        monitor.Error( $"The secret name '{c.Value}' at \"{c.Path}\" has a placeholder: only the handles of a fleet App (\"InstanceCount\", \"Instances\" or \"MaxInstanceCount\") use the placeholders of its instances." );
+                        success = false;
+                    }
+                    else
+                    {
+                        var relative = c.Path.Substring( root.Path.Length + 1 );
+                        foreach( var r in resolved )
+                        {
+                            var name = r[relative];
+                            if( !ConfigurationSecret.IsValidName( name ) )
+                            {
+                                monitor.Error( $"Invalid secret name '{name}' at \"{c.Path}\" ('{c.Value}' resolved for an instance): a name is made of segments separated by ':' made of letters, digits, '_' and '-' (\"Worker:{{Name}}:Key\")." );
+                                success = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+                else if( !ConfigurationSecret.IsValidName( c.Value ) )
                 {
                     monitor.Error( $"Invalid secret name at \"{c.Path}\": a name is made of segments separated by ':' made of letters, digits, '_' and '-' (\"Duende:ClientSecret\")." );
                     success = false;
@@ -137,7 +183,7 @@ public sealed partial class AppBuilderConfiguration
             }
             else
             {
-                success &= CheckHandles( monitor, c );
+                success &= CheckHandles( monitor, c, root, resolved );
             }
         }
         return success;

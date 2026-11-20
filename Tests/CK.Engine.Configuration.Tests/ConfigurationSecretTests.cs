@@ -89,6 +89,7 @@ public class ConfigurationSecretTests
     [TestCase( """{ "$SECRET": "A::B" }""", "Invalid secret name" )]
     [TestCase( """{ "$SECRET": { "Name": "A" } }""", "Invalid secret name" )]
     [TestCase( """{ "$SECRET": "A", "Other": 3 }""", "must be its only key" )]
+    [TestCase( """{ "$SECRET": "Back:{Name}:Key" }""", "has a placeholder: only the handles of a fleet App" )]
     public void an_invalid_handle_is_an_error( string handle, string message )
     {
         var app = Load( $$"""
@@ -169,6 +170,30 @@ public class ConfigurationSecretTests
     }
 
     [Test]
+    public void the_handles_of_a_fleet_may_use_its_placeholders()
+    {
+        var app = Load( """
+            {
+              "App": { "FullName": "Sample/$Back-{Name}", "Instances": [ "Red", "Blue" ], "MaxInstanceCount": 3,
+                       "Local": { "Key": { "$SECRET": "Back:{Name}:Key" }, "Other": { "$SECRET": "Back-{Index}" } } }
+            }
+            """ );
+        app.CheckSecrets( TestHelper.Monitor ).ShouldBeTrue();
+
+        var bad = Load( """
+            {
+              "App": { "FullName": "Sample/$Back-{Name}", "InstanceCount": 2,
+                       "Local": { "Key": { "$SECRET": "Back {Name}" } } }
+            }
+            """ );
+        using( TestHelper.Monitor.CollectTexts( out var texts ) )
+        {
+            bad.CheckSecrets( TestHelper.Monitor ).ShouldBeFalse();
+            texts.ShouldContain( t => t.Contains( "Invalid secret name 'Back 1'" ) && t.Contains( "resolved for an instance" ) );
+        }
+    }
+
+    [Test]
     public void an_engine_resolves_a_secret_from_the_development_secrets()
     {
         var context = new AppBuilderContext( new EngineConfiguration(), [], null, new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase ) { { "Db", "cs" } } );
@@ -178,6 +203,8 @@ public class ConfigurationSecretTests
         {
             context.TryResolveSecret( TestHelper.Monitor, "Other", out _ ).ShouldBeFalse();
             texts.ShouldContain( t => t.Contains( "The secret 'Other' is required by the build" ) );
+            context.TryResolveSecret( TestHelper.Monitor, "Db:{Name}", out _ ).ShouldBeFalse();
+            texts.ShouldContain( t => t.Contains( "uses the placeholders of the instances of a fleet" ) );
         }
     }
 

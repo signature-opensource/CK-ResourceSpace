@@ -218,7 +218,9 @@ A secret is never written in a configuration file: its place holds a **handle**,
   handle with `AppConfiguration.ProjectValue( "<path>:$SECRET", name, "<origin>:$SECRET" )`: the `"$LOCK"` of the value it
   replaces applies.
 - **A name** is made of segments separated by `:` made of letters, digits, `_` and `-` (`Duende:ClientSecret`); the
-  handle is the only key of its object. Anything else is an error.
+  handle is the only key of its object. Anything else is an error. The handles of a fleet App may use its placeholders
+  (`{ "$SECRET": "Worker:{Name}:Key" }`: a secret per instance, resolved with the instance at start): the name of each
+  instance is checked; a secret that the build itself needs (`AppBuilderContext.TryResolveSecret`) has no placeholder.
 - **The value** is the configuration key `Secrets:<Name>` of the host: see CK.AppHost. In development, the solution's
   `#Dev/Secrets.json` holds them (its root is the content of the `Secrets` section: `{ "Google": { "ClientSecret": "..." } }`).
 - **The code declares what is a secret:** `[ConfigurationSecret( "Party:Oidc:*:ClientSecret" )]` on a configurable type

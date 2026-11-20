@@ -94,6 +94,7 @@ public sealed partial class AppBuilderConfiguration
                         ["Index"] = i.Index,
                         ["FullName"] = resolved["FullName"],
                         ["Arguments"] = new JsonArray( (JsonNode?)$"--Instance={i.Name}" ),
+                        ["Secrets"] = InstanceSecrets( resolved, secrets ),
                         ["PerDeployment"] = PerDeploymentValues( resolved, patterns )
                     } );
                 }
@@ -117,6 +118,19 @@ public sealed partial class AppBuilderConfiguration
             }
         }
         return success;
+
+        // The names of the secrets of an instance: its handles resolved, and the names of the App without placeholders
+        // (the other ones are its handles).
+        static JsonArray InstanceSecrets( ImmutableConfigurationSection resolved, SortedSet<string> appSecrets )
+        {
+            var names = new SortedSet<string>( appSecrets.Where( n => !n.Contains( '{' ) ), StringComparer.OrdinalIgnoreCase );
+            var handleSuffix = ":" + ConfigurationSecret.HandleKey;
+            foreach( var (path, value) in resolved.AsEnumerable( makePathsRelative: true ) )
+            {
+                if( value != null && path.EndsWith( handleSuffix, StringComparison.OrdinalIgnoreCase ) ) names.Add( value );
+            }
+            return new JsonArray( names.Select( n => (JsonNode?)n ).ToArray() );
+        }
 
         // The values of a configuration covered by the keys per deployment, by their relative path.
         static JsonObject PerDeploymentValues( Microsoft.Extensions.Configuration.IConfiguration configuration, List<ConfigurationPathPattern> patterns )
