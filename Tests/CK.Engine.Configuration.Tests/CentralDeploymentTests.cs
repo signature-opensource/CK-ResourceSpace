@@ -220,4 +220,82 @@ public class CentralDeploymentTests
         CentralDeployment.MergePatch( target, patch )!.ToJsonString()
                          .ShouldBe( """{"a":"z","c":{"d":"e","h":[{"i":1}]},"arr":[3]}""" );
     }
+
+    const string _twoBuilders = """
+        {
+          "Domain": "Sample/Auth3",
+          "Deployment": { "SelfContained": false },
+          "Builders": {
+            "Front/Front.Builder": { "App": { "AppProject": "../Other/Front.App", "HostProject": "../Front.Host" } },
+            "Auth3/Auth3.Builder": { "App": {} }
+          }
+        }
+        """;
+
+    [Test]
+    public void the_settings_of_the_deployments_and_their_asset_names()
+    {
+        var central = Create( _twoBuilders,
+                              ("#Production", """{ "Deployment": { "Builders": [ "Front/Front.Builder" ], "RuntimeIdentifier": "linux-x64" } }"""),
+                              ("Paris/Shop/#Staging", "{}") );
+        var deployments = Load( central );
+        var production = deployments.Single( d => d.Name == "#Production" );
+        production.Settings.Builders.ShouldBe( ["Front/Front.Builder"] );
+        production.Settings.RuntimeIdentifier.ShouldBe( "linux-x64" );
+        production.Settings.SelfContained.ShouldBeFalse();
+        production.DeployedBuilders.Select( b => b.Path ).ShouldBe( ["Front/Front.Builder"] );
+        production.AssetName.ShouldBe( "Production" );
+        production.Environment.ShouldBe( "#Production" );
+
+        var staging = deployments.Single( d => d.Name == "Paris/Shop/#Staging" );
+        staging.Settings.ShouldBe( CentralDeploymentSettings.Default );
+        staging.DeployedBuilders.Select( b => b.Path ).ShouldBe( ["Front/Front.Builder", "Auth3/Auth3.Builder"] );
+        staging.AssetName.ShouldBe( "Paris.Shop.Staging" );
+        staging.Environment.ShouldBe( "#Staging" );
+    }
+
+    [TestCase( """{ "Deployment": { "Builders": [ "Nope/Nope.Builder" ] } }""", "Invalid builder '\"Nope/Nope.Builder\"'" )]
+    [TestCase( """{ "Deployment": { "SelfContained": true } }""", "requires a \"RuntimeIdentifier\"" )]
+    [TestCase( """{ "Deployment": { "Other": 1 } }""", "Unknown key \"Deployment:Other\"" )]
+    [TestCase( """{ "Deployment": [] }""", "an object is expected" )]
+    public void invalid_settings( string overlay, string message )
+    {
+        ShouldFail( Create( _twoBuilders, ("#Production", overlay) ), message );
+    }
+
+    // What the AppIdentity contributor claims.
+    sealed class IdentityContributor : IAppBuilderContributor
+    {
+        public bool Contribute( IActivityMonitor monitor, AppBuilderContext context ) => true;
+
+        public bool ProjectFromCentral( IActivityMonitor monitor, CentralProjectionContext context )
+        {
+            context.ClaimKey( "Domain" );
+            context.ClaimKey( "Environment" );
+            return true;
+        }
+    }
+
+    [Test]
+    public void the_builder_of_a_deployment_is_projected_on_the_original_App()
+    {
+        var central = Create( _twoBuilders, ("#Production", """{ "Builders": { "Front/Front.Builder": { "App": { "Demo": 1 } } } }""") );
+        var production = Load( central ).Single();
+        var folder = central.RootFolder.Combine( "Deployment/.build/Production/Front.Builder" );
+        Directory.CreateDirectory( folder );
+        production.WriteBuilderProjection( TestHelper.Monitor, central, "Front/Front.Builder", folder, [new IdentityContributor()] ).ShouldBeTrue();
+        var text = File.ReadAllText( folder.AppendPart( "ckonf.json" ) );
+        text.ShouldStartWith( "// Generated from Deployment/#Production/ckonf.merged.json (the deployment '#Production'): do not edit." );
+        var projected = System.Text.Json.Nodes.JsonNode.Parse( text, documentOptions: new System.Text.Json.JsonDocumentOptions { CommentHandling = System.Text.Json.JsonCommentHandling.Skip } )!;
+        projected["App"]!["AppProject"]!.GetValue<string>().ShouldBe( "../../../../Front/Other/Front.App" );
+        projected["App"]!["HostProject"].ShouldBeNull();
+        projected["App"]!["Demo"]!.GetValue<int>().ShouldBe( 1 );
+
+        production.WriteBuilderFile( folder, "Front/Front.Builder" );
+        CentralDeployment.TryReadBuilderFile( TestHelper.Monitor, folder, out var name, out var builder ).ShouldBeTrue();
+        name.ShouldBe( "#Production" );
+        builder.ShouldBe( "Front/Front.Builder" );
+
+        production.WriteBuilderProjection( TestHelper.Monitor, central, "Nope/Nope.Builder", folder, [new IdentityContributor()] ).ShouldBeFalse();
+    }
 }

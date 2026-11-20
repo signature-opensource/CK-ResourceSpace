@@ -19,11 +19,16 @@ public sealed class AppBuilderContext
     /// <param name="devSecrets">
     /// The secrets of the development (see <see cref="AppBuilderConfiguration.TryLoadDevSecrets"/>). Defaults to none.
     /// </param>
+    /// <param name="deployment">
+    /// The deployment that this run builds (see <see cref="CentralDeployment"/>), null for the development build.
+    /// </param>
     public AppBuilderContext( EngineConfiguration engineConfiguration,
                               IReadOnlyList<AppConfiguration> apps,
                               AppAspects? aspects = null,
-                              IReadOnlyDictionary<string, string>? devSecrets = null )
+                              IReadOnlyDictionary<string, string>? devSecrets = null,
+                              CentralDeployment? deployment = null )
     {
+        Deployment = deployment;
         Throw.CheckNotNullArgument( engineConfiguration );
         Throw.CheckNotNullArgument( apps );
         EngineConfiguration = engineConfiguration;
@@ -45,10 +50,23 @@ public sealed class AppBuilderContext
     /// <returns>True on success, false when the secret is missing (the error is logged).</returns>
     public bool TryResolveSecret( IActivityMonitor monitor, string name, [NotNullWhen( true )] out string? value )
     {
+        if( Deployment != null )
+        {
+            value = null;
+            monitor.Error( $"The secret '{name}' is required by the build of the deployment '{Deployment.Name}': the build of a deployment never reads a secret (its value is given to the deployed host)." );
+            return false;
+        }
         if( _devSecrets.TryGetValue( name, out value ) ) return true;
         monitor.Error( $"The secret '{name}' is required by the build: its value is missing from \"#Dev/{ConfigurationSecret.DevFileName}\" (its root is the content of the \"{ConfigurationSecret.SectionName}\" section)." );
         return false;
     }
+
+    /// <summary>
+    /// Gets the deployment that this run builds (a builder generated for it: see <see cref="CentralDeployment"/>), or
+    /// null for the development build. The build of a deployment never touches a database, never reads a secret
+    /// (<see cref="TryResolveSecret"/> fails).
+    /// </summary>
+    public CentralDeployment? Deployment { get; }
 
     /// <summary>
     /// Gets the engine configuration: its BinPaths are the <see cref="Apps"/> (and the root of an optional "CKSetup.xml").

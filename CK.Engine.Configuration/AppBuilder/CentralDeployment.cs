@@ -51,6 +51,18 @@ public sealed class CentralDeployment
     /// </summary>
     public const string PerDeploymentKey = "$PER_DEPLOYMENT";
 
+    /// <summary>
+    /// The root key of the settings of the deployments (see <see cref="CentralDeploymentSettings"/>): "Deployment", in the
+    /// central configuration (the defaults of every deployment) or in an overlay.
+    /// </summary>
+    public const string SettingsKey = "Deployment";
+
+    /// <summary>
+    /// The file that makes a builder the builder of a deployment: <c>{ "Deployment": "#Production", "Builder": "Front/Auth3.Front.Builder" }</c>,
+    /// written in the generated builder of a deployment (see <see cref="WriteBuilderProjection"/>).
+    /// </summary>
+    public const string BuilderFileName = "ckonf.deployment.json";
+
     static readonly JsonSerializerOptions _writeOptions = new JsonSerializerOptions
     {
         WriteIndented = true,
@@ -65,7 +77,8 @@ public sealed class CentralDeployment
                        JsonObject overlay,
                        JsonObject merged,
                        CentralConfiguration configuration,
-                       IReadOnlyList<PerDeploymentMarker> markers )
+                       IReadOnlyList<PerDeploymentMarker> markers,
+                       CentralDeploymentSettings settings )
     {
         Name = name;
         Folder = folder;
@@ -74,7 +87,32 @@ public sealed class CentralDeployment
         Merged = merged;
         Configuration = configuration;
         Markers = markers;
+        Settings = settings;
     }
+
+    /// <summary>
+    /// Gets the settings of this deployment that are not configuration: its builders, how its hosts are published.
+    /// </summary>
+    public CentralDeploymentSettings Settings { get; }
+
+    /// <summary>
+    /// Gets the environment of this deployment: the name of its folder ("#Production").
+    /// </summary>
+    public string Environment => Folder.LastPart;
+
+    /// <summary>
+    /// Gets the name of the assets of this deployment (a release asset name has no '#'): the <see cref="Name"/> without
+    /// its '#', its '/' mapped to '.' ("Production", "Paris.Shop.Staging"). Reversible: the environment is the last part
+    /// and a part of a domain has no '.'.
+    /// </summary>
+    public string AssetName => Name.Replace( "#", "" ).Replace( '/', '.' );
+
+    /// <summary>
+    /// Gets the builders that this deployment builds (<see cref="CentralDeploymentSettings.Builders"/>, all by default), in
+    /// the order of its configuration.
+    /// </summary>
+    public IEnumerable<CentralBuilder> DeployedBuilders
+        => Configuration.Builders.Where( b => Settings.Builders == null || Settings.Builders.Contains( b.Path, StringComparer.OrdinalIgnoreCase ) );
 
     /// <summary>
     /// Gets the name of the deployment: its path in the "Deployment" folder ("#Production", "Paris/Shop/#Staging").
@@ -285,9 +323,103 @@ public sealed class CentralDeployment
         }
         var markers = new List<PerDeploymentMarker>( baseDeployment?.Markers ?? central.PerDeploymentMarkers );
         markers.AddRange( raw.Markers );
-        var d = new CentralDeployment( raw.Name, raw.Folder, baseDeployment, raw.Overlay, merged, configuration, markers );
+        var settings = CentralDeploymentSettings.Read( monitor, merged[SettingsKey], configuration, $"the deployment '{raw.Name}'" );
+        if( settings == null ) return null;
+        var d = new CentralDeployment( raw.Name, raw.Folder, baseDeployment, raw.Overlay, merged, configuration, markers, settings );
         resolved.Add( raw.Name, d );
         return d;
+    }
+
+    /// <summary>
+    /// Writes the "ckonf.json" of the builder of this deployment generated for one of the builders of the solution: the
+    /// projection of the builder in the merged configuration, its Apps on their original ".App" project ("AppProject":
+    /// the generated builder references it), their ".Host" project the one next to the generated builder (a copy).
+    /// </summary>
+    /// <param name="monitor">The monitor to use.</param>
+    /// <param name="central">The central configuration (where the original projects are).</param>
+    /// <param name="builderPath">The path of the builder in the "Builders" ("Front/Auth3.Front.Builder").</param>
+    /// <param name="folder">The folder of the generated builder.</param>
+    /// <param name="contributors">The contributors, in their order.</param>
+    /// <returns>True on success, false on error.</returns>
+    public bool WriteBuilderProjection( IActivityMonitor monitor,
+                                        CentralConfiguration central,
+                                        string builderPath,
+                                        NormalizedPath folder,
+                                        IEnumerable<IAppBuilderContributor> contributors )
+    {
+        var builder = Configuration.Builders.FirstOrDefault( b => b.Path.Equals( builderPath, StringComparison.OrdinalIgnoreCase ) );
+        var original = central.Builders.FirstOrDefault( b => b.Path.Equals( builderPath, StringComparison.OrdinalIgnoreCase ) );
+        if( builder == null || original == null )
+        {
+            monitor.Error( $"The builder '{builderPath}' is not a builder of the deployment '{Name}'." );
+            return false;
+        }
+        bool success = true;
+        var r = Configuration.WriteProjection( monitor,
+                                               builder,
+                                               contributors,
+                                               folder,
+                                               $"{FolderName}/{Name}/{MergedFileName} (the deployment '{Name}')",
+                                               ( app, node ) =>
+                                               {
+                                                   var o = original.Apps.FirstOrDefault( a => a.Name.Equals( app.Name, StringComparison.OrdinalIgnoreCase ) );
+                                                   if( o == null )
+                                                   {
+                                                       monitor.Error( $"The {app} of the deployment '{Name}' is not an App of the builder '{builderPath}' of the solution." );
+                                                       success = false;
+                                                       return;
+                                                   }
+                                                   node.Remove( "AppProject" );
+                                                   node.Remove( "HostProject" );
+                                                   node["AppProject"] = Path.GetRelativePath( folder, o.AppProjectFolder ).Replace( '\\', '/' );
+                                               } );
+        return r && success;
+    }
+
+    /// <summary>
+    /// Reads the <see cref="BuilderFileName"/> of a builder, if it exists.
+    /// </summary>
+    /// <param name="monitor">The monitor to use.</param>
+    /// <param name="builderFolder">The folder of the builder.</param>
+    /// <param name="deploymentName">The name of the deployment, null when the file doesn't exist.</param>
+    /// <param name="builderPath">The path of the builder of the solution that this builder builds for the deployment.</param>
+    /// <returns>True on success (with or without the file), false on error.</returns>
+    public static bool TryReadBuilderFile( IActivityMonitor monitor, NormalizedPath builderFolder, out string? deploymentName, out string? builderPath )
+    {
+        deploymentName = null;
+        builderPath = null;
+        var file = builderFolder.AppendPart( BuilderFileName );
+        if( !File.Exists( file ) ) return true;
+        try
+        {
+            var o = JsonNode.Parse( File.ReadAllText( file ), documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip } ) as JsonObject;
+            deploymentName = (o?["Deployment"] as JsonValue)?.GetValue<string>();
+            builderPath = (o?["Builder"] as JsonValue)?.GetValue<string>();
+        }
+        catch( Exception ex )
+        {
+            monitor.Error( $"While reading '{file}'.", ex );
+            return false;
+        }
+        if( string.IsNullOrWhiteSpace( deploymentName ) || string.IsNullOrWhiteSpace( builderPath ) )
+        {
+            monitor.Error( $"Invalid '{file}': {{ \"Deployment\": \"#Production\", \"Builder\": \"Path/X.Builder\" }} is expected." );
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Writes the <see cref="BuilderFileName"/> in the folder of a builder generated for this deployment.
+    /// </summary>
+    /// <param name="builderFolder">The folder of the generated builder.</param>
+    /// <param name="builderPath">The path of the builder of the solution that it builds for this deployment.</param>
+    public void WriteBuilderFile( NormalizedPath builderFolder, string builderPath )
+    {
+        var o = new JsonObject { ["Deployment"] = Name, ["Builder"] = builderPath };
+        File.WriteAllText( builderFolder.AppendPart( BuilderFileName ),
+                           $"// Written by CK.AppDeployment: this builder builds '{builderPath}' for the deployment '{Name}'.{System.Environment.NewLine}"
+                           + o.ToJsonString( _writeOptions ) + System.Environment.NewLine );
     }
 
     /// <summary>
@@ -332,9 +464,9 @@ public sealed class CentralDeployment
         var sources = new List<string>();
         for( var d = this; d != null; d = d.Base ) sources.Insert( 0, $"{FolderName}/{d.Name}/{CentralConfiguration.FileName}" );
         sources.Insert( 0, CentralConfiguration.FileName );
-        var text = $"// Generated from {sources.Concatenate( ", " )} (from the root of the solution): do not edit.{Environment.NewLine}"
+        var text = $"// Generated from {sources.Concatenate( ", " )} (from the root of the solution): do not edit.{System.Environment.NewLine}"
                    + Merged.ToJsonString( _writeOptions )
-                   + Environment.NewLine;
+                   + System.Environment.NewLine;
         var file = Folder.AppendPart( MergedFileName );
         try
         {

@@ -279,7 +279,20 @@ public sealed class CentralConfiguration
     public bool WriteProjection( IActivityMonitor monitor, CentralBuilder builder, IEnumerable<IAppBuilderContributor> contributors )
     {
         Throw.CheckArgument( builder.Central == this );
-        using var _ = monitor.OpenInfo( $"Projecting the builder '{builder.Path}' of '{File}'." );
+        var relative = string.Concat( Enumerable.Repeat( "../", builder.Path.Count( c => c == '/' ) + 1 ) ) + FileName;
+        return WriteProjection( monitor, builder, contributors, builder.Folder, relative, null );
+    }
+
+    // The projection of a builder in a folder: its own (the development), or the one of a generated builder (a deployment,
+    // see CentralDeployment.WriteBuilderProjection): "adjust" completes each App once it is projected.
+    internal bool WriteProjection( IActivityMonitor monitor,
+                                   CentralBuilder builder,
+                                   IEnumerable<IAppBuilderContributor> contributors,
+                                   NormalizedPath folder,
+                                   string source,
+                                   Action<CentralApp, JsonObject>? adjust )
+    {
+        using var _ = monitor.OpenInfo( $"Projecting the builder '{builder.Path}' of '{File}' in '{folder}'." );
         var node = (JsonObject)builder.Node.DeepClone();
         var apps = new List<CentralProjectedApp>();
         if( node["App"] is JsonObject single )
@@ -308,7 +321,7 @@ public sealed class CentralConfiguration
         }
         foreach( var (key, _) in _root )
         {
-            if( key is "Builders" or "Defaults" or "$schema" || context.ClaimedKeys.Contains( key ) ) continue;
+            if( key is "Builders" or "Defaults" or "$schema" or CentralDeployment.SettingsKey || context.ClaimedKeys.Contains( key ) ) continue;
             monitor.Error( $"Unknown key '{key}' in '{File}': no contributor handles it (a missing package reference in the builder?)." );
             success = false;
         }
@@ -321,16 +334,19 @@ public sealed class CentralConfiguration
         {
             foreach( var a in apps ) Merge( a.Node, _appDefaults );
         }
-        var file = builder.Folder.AppendPart( AppBuilderConfiguration.FileName );
-        var relative = string.Concat( Enumerable.Repeat( "../", builder.Path.Count( c => c == '/' ) + 1 ) ) + FileName;
-        var text = $"// Generated from {relative}: do not edit.{Environment.NewLine}"
+        if( adjust != null )
+        {
+            foreach( var a in apps ) adjust( a.App, a.Node );
+        }
+        var file = folder.AppendPart( AppBuilderConfiguration.FileName );
+        var text = $"// Generated from {source}: do not edit.{Environment.NewLine}"
                    + node.ToJsonString( _writeOptions )
                    + Environment.NewLine;
         try
         {
-            if( !Directory.Exists( builder.Folder ) )
+            if( !Directory.Exists( folder ) )
             {
-                monitor.Error( $"The folder of the builder '{builder.Path}' doesn't exist: '{builder.Folder}'." );
+                monitor.Error( $"The folder of the builder '{builder.Path}' doesn't exist: '{folder}'." );
                 return false;
             }
             if( System.IO.File.Exists( file ) && System.IO.File.ReadAllText( file ) == text ) return true;
@@ -454,6 +470,21 @@ public sealed class CentralApp
     /// Gets the configuration of this App, as written in the central configuration.
     /// </summary>
     public ImmutableConfigurationSection Configuration { get; }
+
+    /// <summary>
+    /// Gets the folder of the ".App" project of this App: its "AppProject" (relative to the builder's folder), by default
+    /// the "{Name}.App" folder next to the builder.
+    /// </summary>
+    public NormalizedPath AppProjectFolder => ResolveProject( "AppProject", ".App" );
+
+    /// <summary>
+    /// Gets the folder of the ".Host" project of this App: its "HostProject" (relative to the builder's folder), by
+    /// default the "{Name}.Host" folder next to the builder.
+    /// </summary>
+    public NormalizedPath HostProjectFolder => ResolveProject( "HostProject", ".Host" );
+
+    NormalizedPath ResolveProject( string key, string suffix )
+        => System.IO.Path.GetFullPath( System.IO.Path.Combine( Builder.Folder, Configuration[key] ?? $"../{Name}{suffix}" ) );
 
     /// <inheritdoc />
     public override string ToString() => $"App '{Name}'";
