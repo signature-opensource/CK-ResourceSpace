@@ -191,9 +191,10 @@ public class CentralDeploymentTests
         AppBuilderConfiguration.CollectPerDeploymentKeys( TestHelper.Monitor,
                                                           app,
                                                           [new PackageConfigurationPerDeployment( "HttpEndpointFeatureDriver", ["HttpEndpoint"], "Party:Urls" )],
+                                                          [],
                                                           out var keys ).ShouldBeTrue();
         keys.Select( k => k.Pattern ).ShouldBe( ["StoreRootPath", "Local:HttpEndpoint:Urls", "Defaults:HttpEndpoint:Urls", "Parties:[*]:HttpEndpoint:Urls"] );
-        AppBuilderConfiguration.CollectPerDeploymentKeys( TestHelper.Monitor, app, [new PackageConfigurationPerDeployment( "X", ["X"], "Urls" )], out _ )
+        AppBuilderConfiguration.CollectPerDeploymentKeys( TestHelper.Monitor, app, [new PackageConfigurationPerDeployment( "X", ["X"], "Urls" )], [], out _ )
                                .ShouldBeFalse();
     }
 
@@ -207,8 +208,25 @@ public class CentralDeploymentTests
         app.DeclareAnchor( "Parties:1", ["Party", "Remote", "RemoteTemplate"] );
         app.AddPerDeploymentPartyKey( "Remote", "Address" );
         app.AddPerDeploymentPartyKey( "remote", "address" );
-        AppBuilderConfiguration.CollectPerDeploymentKeys( TestHelper.Monitor, app, [], out var keys ).ShouldBeTrue();
+        AppBuilderConfiguration.CollectPerDeploymentKeys( TestHelper.Monitor, app, [], [], out var keys ).ShouldBeTrue();
         keys.Select( k => k.Pattern ).ShouldBe( ["Parties:[*]:Address", "Defaults:Address"] );
+    }
+
+    [Test]
+    public void the_size_of_a_fleet_is_per_deployment()
+    {
+        var engine = new EngineConfiguration();
+        var fleet = new AppConfiguration( "Trolley",
+                                          "C:/Trolley.App",
+                                          "C:/Trolley.Host",
+                                          ImmutableConfigurationSection.CreateFromJson( "Apps", "Trolley", """{ "FullName": "Sample/$Trolley-{Index}", "InstanceCount": 2 }""" ),
+                                          engine.FirstBinPath );
+        AppBuilderConfiguration.CollectPerDeploymentKeys( TestHelper.Monitor, fleet, [], [], out var keys ).ShouldBeTrue();
+        keys.Select( k => k.Pattern ).ShouldBe( ["InstanceCount", "Instances", "MaxInstanceCount"] );
+
+        var single = new AppConfiguration( "Front", "C:/Front.App", "C:/Front.Host", ImmutableConfigurationSection.CreateFromJson( "Apps", "Front", "{}" ), engine.FirstBinPath );
+        AppBuilderConfiguration.CollectPerDeploymentKeys( TestHelper.Monitor, single, [], [], out keys ).ShouldBeTrue();
+        keys.ShouldBeEmpty();
     }
 
     [Test]

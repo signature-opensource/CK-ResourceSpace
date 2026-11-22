@@ -88,9 +88,10 @@ projection.
 
 - **A builder is keyed by the path of its folder,** relative to the root, downward only (`..` is an error). Its entry is
   exactly its `ckonf.json` (`"Aspects"`, `"App"` or `"Apps"`). The names of the Apps are unique in the whole solution.
-- **The other root keys belong to the contributors:** a contributor claims the keys it handles
-  (`CentralProjectionContext.ClaimKey`) and completes the Apps of the builder being projected
-  (`IAppBuilderContributor.ProjectFromCentral`). A root key that no contributor claims is an error. The meaning of what
+- **The other root keys belong to the contributors:** the engine of a contributor declares the keys it handles
+  (`[assembly: CentralConfigurationKey( "Links", PerDeployment = ["[*]:Link:Address"] )]`, claimed before its
+  contributors project; `CentralProjectionContext.ClaimKey` for a key that only its code knows) and its contributors
+  complete the Apps of the builder being projected (`IAppBuilderContributor.ProjectFromCentral`). A root key that no contributor claims is an error. The meaning of what
   they project is checked by the builder that reads its projection, as for a hand written `ckonf.json`.
 - **A builder of the repository that is not in `"Builders"` is an error** when the repository has a central
   configuration.
@@ -124,9 +125,13 @@ Deployment/
     central configuration or of an overlay (the patterns are relative to the object; the markers are removed when the
     file is read, they are never projected);
   - by the code: `[ConfigurationPerDeployment( "Party:Urls" )]` on a configurable type (built like a `[ConfigurationLock]`
-    path), `AppConfiguration.AddPerDeploymentPartyKey( "Remote", "Address" )` for a property of the parties of a kind
-    (in each anchor of the kind and its fallbacks), `AppConfiguration.AddPerDeploymentKey( path )` for a reader of an App, and
-    `CentralProjectionContext.AddPerDeploymentKey( "Links:[*]:Link:Address" )` for a contributor's central keys.
+    path); `[assembly: ConfigurationPerDeployment( "Remote:Address" )]` on the assembly of a contributor for a property
+    of the parties of a kind (in each anchor of the kind and its fallbacks; `AppConfiguration.AddPerDeploymentPartyKey`
+    when only the code knows it); `AppConfiguration.AddPerDeploymentKey( path )` for a reader of an App; the
+    `PerDeployment` of an `[assembly: CentralConfigurationKey]` (or `CentralProjectionContext.AddPerDeploymentKey`) for a
+    contributor's central keys;
+  - by the builder: the size of a fleet (`"InstanceCount"`, `"Instances"`, `"MaxInstanceCount"` of an App that is a
+    template).
 
   A value of an App is the one of its entry in `"Builders"`, otherwise the one of `"Defaults:App"`: the deployment writes
   the one it uses. `CentralDeployment.CheckPerDeployment` checks them (the builder runs it for its own Apps).

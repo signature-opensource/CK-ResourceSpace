@@ -306,10 +306,22 @@ public sealed class CentralConfiguration
         }
         var context = new CentralProjectionContext( this, builder, apps );
         bool success = true;
+        var declaringAssemblies = new HashSet<System.Reflection.Assembly>();
         foreach( var c in contributors )
         {
             try
             {
+                // The keys that the engine declares ([assembly: CentralConfigurationKey]): claimed for its contributors.
+                var assembly = c.GetType().Assembly;
+                if( declaringAssemblies.Add( assembly ) )
+                {
+                    foreach( var k in System.Reflection.CustomAttributeExtensions.GetCustomAttributes<CentralConfigurationKeyAttribute>( assembly ) )
+                    {
+                        context.CurrentSource = $"the [assembly: CentralConfigurationKey( \"{k.Key}\" )] of '{assembly.GetName().Name}'";
+                        context.ClaimKey( k.Key );
+                        foreach( var p in k.PerDeployment ?? [] ) context.AddPerDeploymentKey( $"{k.Key}:{p}" );
+                    }
+                }
                 context.CurrentSource = $"the contributor '{c.GetType().ToCSharpName()}'";
                 success &= c.ProjectFromCentral( monitor, context );
             }
@@ -546,7 +558,9 @@ public sealed class CentralProjectionContext
 
     /// <summary>
     /// Claims a root key of the central configuration: a root key that no contributor claims is an error. A contributor
-    /// claims its keys whether they are present or not.
+    /// claims its keys whether they are present or not. The keys declared by the assembly of a contributor
+    /// (<see cref="CentralConfigurationKeyAttribute"/>) are claimed before it projects: this is for the keys that only
+    /// its code knows.
     /// </summary>
     /// <param name="key">The root key.</param>
     public void ClaimKey( string key )
