@@ -3,9 +3,9 @@
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="CK.Abstractions" Version="32.0.0-0.uc" />
+    <PackageReference Include="CK.Abstractions" Version="32.0.0-0.uc.0.ci.29" />
     <PackageReference Include="CK.ActivityMonitor.SimpleSender" Version="28.0.0-0.cris-auth" />
     <!-- The App builder contract: the configuration sections of the builder ("ckonf.json"). -->
-    <PackageReference Include="CK.Configuration" Version="3.0.0-0.uc.1" />
+    <PackageReference Include="CK.Configuration" Version="3.0.0-0.uc.0.ci.20" />
   </ItemGroup>
 </Project>
