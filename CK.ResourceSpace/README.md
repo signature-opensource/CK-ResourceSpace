@@ -176,6 +176,22 @@ and a type's relations may point to the types of another space. Two independent 
 The price of the scope: a path through an ignored type is lost. If `A` requires `S` that requires `B`, and `S` is out of
 the space's scope, the space doesn't order `A` after `B`: within a space, a constraint must be stated within its scope.
 
+## The options of an owner are ordered by an island.
+
+The options of the configurable types (`IConfigurableOption<TOwner>` of CK.Abstractions) are ordered by a small space
+per owner, an island: [`ConfigurableOptions`](Builder/ConfigurableOptions.cs) is shared by the levels that have options
+(the App builder for the aspects, the AppIdentity engine for the party components).
+
+- `ConfigurableOptions.TryCollect` finds the options of a level in a type set: the concrete classes that implement
+  `IConfigurableOption<TOwner>` once, with an owner assignable to one of the level's owner kinds, decorated with exactly
+  one `IConfigurableOptionAttribute` (whose `OwnerKind` accepts the owner) and that have one public constructor (at most
+  one plain `IConfiguration` parameter: its configuration).
+- `ConfigurableOptions.TryOrder` orders the options of one owner: they are the allowed types of the island, its
+  compatibility rule is "an option of an owner assignable from this owner" (a relation to the option of another owner is
+  ignored). The names are unique among the options of an owner. A non optional relation also means "only with it": the
+  result gives the names that each option requires (`OrderedConfigurableOption.Requires`), what the selection of the
+  enabled options checks (`ConfigurationOptionSelector` of CK.Configuration).
+
 ## Handlers project, installers write, and that is the whole contract.
 
 A handler is registered on the `ResSpaceBuilder` and initialized by `Build()` once the packages are

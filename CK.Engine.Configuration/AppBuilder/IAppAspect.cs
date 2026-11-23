@@ -7,9 +7,11 @@ namespace CK.Setup;
 /// an App, creates from the App's configuration and applies to the App, before the <see cref="IAppBuilderContributor"/>
 /// run.
 /// <para>
-/// A concrete aspect has one public constructor whose single optional parameter is its section: a plain
-/// <c>Microsoft.Extensions.Configuration.IConfiguration</c>, null when the aspect is present without section (its
-/// activation, or <c>true</c>). The constructor reads its data and throws on an invalid value. One instance is created
+/// A concrete aspect has one public constructor whose optional parameters are its section (a plain
+/// <c>Microsoft.Extensions.Configuration.IConfiguration</c>, null when the aspect is present without section: its
+/// activation, or <c>true</c>) and its options (an <c>IReadOnlyList&lt;IAppAspectOption&lt;TAspect&gt;&gt;</c>, see
+/// <see cref="IAppAspectOption{TAspect}"/>: the enabled options in their order). The constructor reads its data and throws on an
+/// invalid value. One instance is created
 /// per App.
 /// </para>
 /// </summary>

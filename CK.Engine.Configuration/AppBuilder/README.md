@@ -166,9 +166,16 @@ The builder finds them in the type sets of the Apps, before the contributors run
 - **The types drive, the sections configure:** an aspect is present when it is a member of the set of an App (its
   activation `ByDefault` or `Required`) or when its key is declared (`Optional`), unless its key is `false` (an error
   for a `Required` one). Its key never brings its type in.
-- **The aspect declares its data:** it has one public constructor, without parameter or with its section (a plain
-  `IConfiguration`, null for a bare `true` or when its activation makes it present); it reads its settings and throws
-  on an invalid value.
+- **The aspect declares its data:** it has one public constructor whose optional parameters are its section (a plain
+  `IConfiguration`, null for a bare `true` or when its activation makes it present) and its options (below); it reads
+  its settings and throws on an invalid value.
+- **An aspect has options:** an `IAppAspectOption<TAspect>` decorated with `[AppAspectOption( "Name", TypeActivation.X )]`
+  (or an `IAppBuilderAspectOption<TAspect>` with `[AppBuilderAspectOption]`) is configured in the section of its aspect
+  by its name, like the options of the party features: a section or `true` enables it, `false` disables it, nothing
+  is its activation (`ConfigurationOptionSelector` of CK.Configuration). The builder orders the options of the aspect
+  (the topology attributes between options, `ConfigurableOptions` of CK.ResourceSpace), selects and creates them (one
+  public constructor, with its optional `IConfiguration` section), then gives them to the aspect's constructor: its
+  `IReadOnlyList<IAppAspectOption<TAspect>>` parameter (an option of a base aspect applies to the derived ones).
 - **It applies itself:** `IAppBuilderAspect.Apply( monitor, context, apps )` (the Apps whose set contains it) or
   `IAppAspect.Apply( monitor, context, app )` ensures and configures its engine aspect configurations and projects its
   run time settings in the hosts: `AppConfiguration.ProjectValue( path, value )` writes a value in a root section of
