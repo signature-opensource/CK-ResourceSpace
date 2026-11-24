@@ -156,6 +156,33 @@ are kept; this is an error at registration time, whatever the selection:
 
 A longer cycle that goes through an expanded relationship names the abstraction: `'Gatherer' requires 'CyclingPlugin' (through 'ICyclingPlugin')`.
 
+## The relations of a type are read by one reader, inside a space or not.
+
+[`ResPackageRelationReader.Read`](Builder/ResPackageRelationReader.cs) reads the topology attributes of a type: the name
+based and generic `[Requires]`, `[RequiredBy]`, `[Children]`, `[Groups]` and `[Package]`, their `[Optional...]` variants
+and the `IResourceGroupTopologyAttribute`s. It checks what the space checks (at most one package, a target that is an
+`IResourceGroup`, a package that is an `IResourcePackage`) and hands each relation to an `IResPackageRelationVisitor`
+(a struct: no list is allocated) as a `ResRelationKind` and a `ResPackageDescriptor.Ref`.
+
+```csharp
+struct Requirements : IResPackageRelationVisitor
+{
+    public List<ResPackageDescriptor.Ref> Requires;
+    public void OnPackage( ResPackageDescriptor.Ref package ) { }
+    public void OnRelation( ResRelationKind kind, ResPackageDescriptor.Ref target )
+    {
+        if( kind == ResRelationKind.Requires ) Requires.Add( target );
+    }
+}
+
+var v = new Requirements { Requires = new() };
+if( !ResPackageRelationReader.Read( monitor, typeCache.Get( typeof( MyPackage ) ), ref v ) ) return false;
+```
+
+The registration of a package uses it, and so do the tools that need the relations without building a space: the
+catalog of the configurator shows them, the App builder orders its contributors with them. There is one reading of
+the rules.
+
 ## A space has a scope: what exists, and what concerns it.
 
 Several spaces can be built from the same types, each one for its own aspect (TypeScript packages, locale packages...),

@@ -10,18 +10,33 @@ using Ref = ResPackageDescriptor.Ref;
 /// <summary>
 /// The relations of a package (the package's <see cref="ResPackageDescriptor.Package"/> is handled apart).
 /// </summary>
-enum ResRelationKind
+public enum ResRelationKind
 {
+    /// <summary>
+    /// [Requires]: the target comes before the package.
+    /// </summary>
     Requires,
+
+    /// <summary>
+    /// [RequiredBy]: the target comes after the package (the reverse of <see cref="Requires"/>).
+    /// </summary>
     RequiredBy,
+
+    /// <summary>
+    /// [Children]: the target is a child of the package (a group).
+    /// </summary>
     Children,
+
+    /// <summary>
+    /// [Groups]: the package is a child of the target (a group).
+    /// </summary>
     Groups
 }
 
 /// <summary>
 /// Receives the relations read by <see cref="ResPackageRelationReader.Read{TVisitor}(IActivityMonitor, ICachedType, ref TVisitor)"/>.
 /// </summary>
-interface IResPackageRelationVisitor
+public interface IResPackageRelationVisitor
 {
     /// <summary>
     /// Called once (after the relations) if the type declares its package.
@@ -43,8 +58,13 @@ interface IResPackageRelationVisitor
 /// <para>
 /// No list is allocated here: the visitor decides what to do with each relation.
 /// </para>
+/// <para>
+/// This is the one reading of the topology rules: the resource space uses it, and so do the tools that show or use the
+/// relations of a type without building a space (the catalog of the configurator, the ordering of the App builder
+/// contributors).
+/// </para>
 /// </summary>
-static class ResPackageRelationReader
+public static class ResPackageRelationReader
 {
     // Maps the generic attribute definitions (all arities) to their relation.
     static readonly Dictionary<Type, (ResRelationKind Kind, bool Optional)> _genericRelations = CreateGenericRelations();

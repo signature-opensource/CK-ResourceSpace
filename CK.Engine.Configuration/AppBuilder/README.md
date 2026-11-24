@@ -158,7 +158,8 @@ Deployment/
 
 ## The aspects
 
-An aspect is a configurable type of a model: a package (a concrete `IResourceGroup`) decorated with
+An aspect is a configurable type of a model, declared with CK.AppBuilder.Abstractions: a package (a concrete
+`IResourceGroup`) decorated with
 `[AppBuilderAspect( "Name", TypeActivation.X )]` (a Builder aspect, `IAppBuilderAspect`: one per engine run, at the root
 `"Aspects"`) or `[AppAspect( "Name", TypeActivation.X )]` (an App aspect, `IAppAspect`: in the `"Aspects"` of an App).
 The builder finds them in the type sets of the Apps, before the contributors run:
@@ -176,8 +177,9 @@ The builder finds them in the type sets of the Apps, before the contributors run
   (the topology attributes between options, `ConfigurableOptions` of CK.ResourceSpace), selects and creates them (one
   public constructor, with its optional `IConfiguration` section), then gives them to the aspect's constructor: its
   `IReadOnlyList<IAppAspectOption<TAspect>>` parameter (an option of a base aspect applies to the derived ones).
-- **It applies itself:** `IAppBuilderAspect.Apply( monitor, context, apps )` (the Apps whose set contains it) or
-  `IAppAspect.Apply( monitor, context, app )` ensures and configures its engine aspect configurations and projects its
+- **It applies itself:** it implements `IAppBuilderAspectApply` or `IAppAspectApply` (here: `IAppBuilderAspect` and
+  `IAppAspect` are markers, their `Apply` works on the builder's model). `IAppBuilderAspectApply.Apply( monitor, context,
+  apps )` (the Apps whose set contains it) or `IAppAspectApply.Apply( monitor, context, app )` ensures and configures its engine aspect configurations and projects its
   run time settings in the hosts: `AppConfiguration.ProjectValue( path, value )` writes a value in a root section of
   the host's `appsettings.json` (that can't be a key of the App).
 
