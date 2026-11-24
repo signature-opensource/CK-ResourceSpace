@@ -285,4 +285,4 @@ Then it receives an `AppBuilderContext`:
 - `IAppBuilderContributor.OnContributed( monitor, context )` is called once all of them have contributed: a
   contributor can check what the others did.
 
-The builder that finds the contributors and runs them is a consumer of this model (for how it runs them, see [CK.AppBuilder](https://github.com/signature-opensource/CK-StObj/blob/stable/CK.AppBuilder/README.md)).
+The builder that finds the contributors and runs them is a consumer of this model (for how it runs them, see [CK.AppBuilder](https://github.com/signature-opensource/CK-AppBuilder/blob/stable/CK.AppBuilder/README.md)).

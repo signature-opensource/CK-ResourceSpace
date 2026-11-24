@@ -10,11 +10,15 @@ namespace CK.Setup;
 /// <see cref="AppBuilderContext.Aspects"/>) and completes the <see cref="AppBuilderContext.EngineConfiguration"/> (the
 /// aspects it deduces from the parties, the ones it reads).
 /// <para>
-/// A contributor has one public constructor whose parameters are other contributors: a constructor parameter is a
-/// requirement (the required contributor is created and runs before). A cycle is an error.
+/// A contributor is ordered like any resource group: its <c>[Requires]</c> and <c>[RequiredBy]</c> (and their
+/// <c>[Optional...]</c> variants, an optional one is ignored when its target is not a contributor of the builder), read by
+/// the reader of the ResourceSpace (<c>ResPackageRelationReader</c>). It has one public constructor whose parameters are
+/// other contributors: a constructor parameter is an implicit <c>[Requires]</c> (the required contributor is created
+/// and runs before). <c>[Children]</c>, <c>[Groups]</c> and <c>[Package]</c> mean nothing for a contributor: they are
+/// errors, and so is a cycle.
 /// </para>
 /// </summary>
-public interface IAppBuilderContributor
+public interface IAppBuilderContributor : IResourceGroup
 {
     /// <summary>
     /// Called when the solution has a <see cref="CentralConfiguration"/>, before the "ckonf.json" of the builder is
