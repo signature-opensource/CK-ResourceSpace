@@ -29,11 +29,15 @@ public sealed record ConfigurableOptionModel( ICachedType Type, Type Owner, ICon
 
 /// <summary>
 /// An option of an owner in its order, with the names of the options without which it cannot be enabled (the targets of
-/// its non optional relations).
+/// its non optional relations) and the types outside the options of its owner that it requires (its non optional
+/// <c>[Requires]</c> to a configurable type of its level or of a level above: a feature of the party of its owner, an
+/// aspect...). These ones don't order it (they are outside its island) but they keep their "only with it" meaning: the
+/// level of the option knows whether they are enabled (see <see cref="ConfigurationOptionSelector"/>).
 /// </summary>
 /// <param name="Option">The option.</param>
 /// <param name="Requires">The names of the options that it requires.</param>
-public sealed record OrderedConfigurableOption( ConfigurableOptionModel Option, IReadOnlyList<string> Requires );
+/// <param name="RequiredTypes">The types outside the options of its owner that it requires.</param>
+public sealed record OrderedConfigurableOption( ConfigurableOptionModel Option, IReadOnlyList<string> Requires, IReadOnlyList<Type> RequiredTypes );
 
 /// <summary>
 /// The engine side of the options of the configurable types (<see cref="IConfigurableOption{TOwner}"/>), shared by the
@@ -133,7 +137,8 @@ public static class ConfigurableOptions
     /// Orders the options of an owner with a ResourceSpace island: its options are the allowed types, the compatible types
     /// are the options of an owner type assignable from it (a relation to another option is ignored). The topology
     /// attributes between options order them; a non optional relation also means "only with it" (the requiring option
-    /// can't be enabled without the required one).
+    /// can't be enabled without the required one). A non optional <c>[Requires]</c> to a type that is not an option (a
+    /// configurable type of the option's level or above) is kept in <see cref="OrderedConfigurableOption.RequiredTypes"/>.
     /// </summary>
     /// <param name="monitor">The monitor to use.</param>
     /// <param name="typeCache">The type cache.</param>
@@ -165,6 +170,7 @@ public static class ConfigurableOptions
         };
         var byRawType = options.ToDictionary( o => o.Type.Type );
         var requires = options.ToDictionary( o => o, o => new List<string>() );
+        var requiredTypes = options.ToDictionary( o => o, o => new List<Type>() );
         bool success = true;
         foreach( var o in options )
         {
@@ -178,7 +184,9 @@ public static class ConfigurableOptions
             // Before the build, the references of a type's relations are their raw types.
             foreach( var r in d.Requires )
             {
-                if( !r.IsOptional && r.AsType is { } t && byRawType.TryGetValue( t, out var required ) ) AddRequirement( o, required.Name );
+                if( r.IsOptional || r.AsType is not { } t ) continue;
+                if( byRawType.TryGetValue( t, out var required ) ) AddRequirement( o, required.Name );
+                else if( !GetOwners( t ).Any() && !requiredTypes[o].Contains( t ) ) requiredTypes[o].Add( t );
             }
             foreach( var r in d.RequiredBy )
             {
@@ -191,7 +199,7 @@ public static class ConfigurableOptions
         var data = new ResSpaceDataBuilder( collector ).Build( monitor );
         if( data == null ) return null;
         return data.CoreData.Packages.Where( p => p.Type != null && byType.ContainsKey( p.Type ) )
-                                     .Select( p => new OrderedConfigurableOption( byType[p.Type!], requires[byType[p.Type!]] ) )
+                                     .Select( p => new OrderedConfigurableOption( byType[p.Type!], requires[byType[p.Type!]], requiredTypes[byType[p.Type!]] ) )
                                      .ToList();
 
         void AddRequirement( ConfigurableOptionModel requiring, string required )
