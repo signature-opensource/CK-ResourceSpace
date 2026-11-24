@@ -6,6 +6,6 @@
     <PackageReference Include="CK.AppBuilder.Abstractions" Version="32.0.0-0.uc.2.ci.34" />
     <PackageReference Include="CK.ActivityMonitor.SimpleSender" Version="28.0.0-0.uc.0.ci.9" />
     <!-- The App builder contract: the configuration sections of the builder ("ckonf.json"). -->
-    <PackageReference Include="CK.Configuration" Version="3.0.0-0.uc.1.ci.23" />
+    <PackageReference Include="CK.Configuration" Version="3.0.0-0.uc.1.ci.24" />
   </ItemGroup>
 </Project>
