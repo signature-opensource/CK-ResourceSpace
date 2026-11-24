@@ -35,6 +35,12 @@ public sealed class CentralConfiguration
     /// </summary>
     public const string FileName = "ckonf.json";
 
+    /// <summary>
+    /// The root key that the configurator writes (the source of its catalog: <c>{ "World": "...", "Version": "..." }</c>).
+    /// It is accepted and ignored by the builders.
+    /// </summary>
+    public const string ConfiguratorKey = "$configurator";
+
     static readonly JsonSerializerOptions _writeOptions = new JsonSerializerOptions
     {
         WriteIndented = true,
@@ -333,7 +339,7 @@ public sealed class CentralConfiguration
         }
         foreach( var (key, _) in _root )
         {
-            if( key is "Builders" or "Defaults" or "$schema" or CentralDeployment.SettingsKey || context.ClaimedKeys.Contains( key ) ) continue;
+            if( key is "Builders" or "Defaults" or "$schema" or ConfiguratorKey or CentralDeployment.SettingsKey || context.ClaimedKeys.Contains( key ) ) continue;
             monitor.Error( $"Unknown key '{key}' in '{File}': no contributor handles it (a missing package reference in the builder?)." );
             success = false;
         }

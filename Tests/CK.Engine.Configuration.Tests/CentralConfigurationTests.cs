@@ -139,6 +139,17 @@ public class CentralConfigurationTests
     }
 
     [Test]
+    public void the_configurator_root_key_is_accepted_and_ignored()
+    {
+        var central = """{ "$configurator": { "World": "https://github.com/CK-Build/CK-Stack", "Version": "1.0.0" },"""
+                      + _sample.Substring( _sample.IndexOf( '{' ) + 1 );
+        var root = CreateRepository( central, "Front/Front.Builder", "Backs.Builder" );
+        var c = CentralConfiguration.Parse( TestHelper.Monitor, root.AppendPart( "ckonf.json" ), central ).ShouldNotBeNull();
+        c.WriteProjection( TestHelper.Monitor, c.Builders[0], [new DomainContributor()] ).ShouldBeTrue();
+        File.ReadAllText( root.Combine( "Front/Front.Builder/ckonf.json" ) ).ShouldNotContain( CentralConfiguration.ConfiguratorKey );
+    }
+
+    [Test]
     public void without_central_configuration_nothing_happens()
     {
         NormalizedPath root = Path.Combine( Path.GetTempPath(), "CK.AppBuilder.Tests", Guid.NewGuid().ToString( "N" ) );

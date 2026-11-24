@@ -91,7 +91,9 @@ projection.
 - **The other root keys belong to the contributors:** the engine of a contributor declares the keys it handles
   (`[assembly: CentralConfigurationKey( "Links", PerDeployment = ["[*]:Link:Address"] )]`, claimed before its
   contributors project; `CentralProjectionContext.ClaimKey` for a key that only its code knows) and its contributors
-  complete the Apps of the builder being projected (`IAppBuilderContributor.ProjectFromCentral`). A root key that no contributor claims is an error. The meaning of what
+  complete the Apps of the builder being projected (`IAppBuilderContributor.ProjectFromCentral`). A root key that no contributor claims is an error, except `"$schema"` and
+  `"$configurator"` (`CentralConfiguration.ConfiguratorKey`: the source of the configurator's catalog, ignored by the
+  builders). The meaning of what
   they project is checked by the builder that reads its projection, as for a hand written `ckonf.json`.
 - **A builder of the repository that is not in `"Builders"` is an error** when the repository has a central
   configuration.
