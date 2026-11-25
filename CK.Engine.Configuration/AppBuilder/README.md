@@ -233,7 +233,7 @@ A secret is never written in a configuration file: its place holds a **handle**,
 (`ConfigurationSecret`, CK.ResourceSpace.Abstractions), that the host resolves when it starts:
 
 ```jsonc
-"Oidc": { "Google": { "ClientId": "...", "ClientSecret": { "$SECRET": "Google:ClientSecret" } } }
+"Oidc": { "Schemes": { "Google": { "ClientId": "...", "ClientSecret": { "$SECRET": "Google:ClientSecret" } } } }
 ```
 
 - **A handle is a value like another one:** in the flattened configuration it is the key `"<path>:$SECRET"` whose value
@@ -247,7 +247,7 @@ A secret is never written in a configuration file: its place holds a **handle**,
   instance is checked; a secret that the build itself needs (`AppBuilderContext.TryResolveSecret`) has no placeholder.
 - **The value** is the configuration key `Secrets:<Name>` of the host: see CK.AppHost. In development, the solution's
   `#Dev/Secrets.json` holds them (its root is the content of the `Secrets` section: `{ "Google": { "ClientSecret": "..." } }`).
-- **The code declares what is a secret:** `[ConfigurationSecret( "Party:Oidc:*:ClientSecret" )]` on a configurable type
+- **The code declares what is a secret:** `[ConfigurationSecret( "Party:Oidc:Schemes:*:ClientSecret" )]` on a configurable type
   (built like a `[ConfigurationLock]` path: a kind of anchor, then a path relative to the type's section, with
   patterns), `AppConfiguration.AddSecretKey( path )` for a reader that reads its keys by hand. A plain value where a
   secret is declared is reported: the development configuration accepts it (a known test secret, an Integrated Security
