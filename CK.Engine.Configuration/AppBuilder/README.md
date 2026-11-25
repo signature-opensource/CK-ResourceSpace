@@ -136,7 +136,9 @@ Deployment/
     template).
 
   A value of an App is the one of its entry in `"Builders"`, otherwise the one of `"Defaults:App"`: the deployment writes
-  the one it uses. `CentralDeployment.CheckPerDeployment` checks them (the builder runs it for its own Apps).
+  the one it uses. `CentralDeployment.CheckPerDeployment` checks them (the builder runs it for its own Apps); the rule is
+  `CentralDeployment.FindInheritedValues` (data, no file: the configurator checks the documents it edits with it, like
+  `DiscoverFolders` and `ValidateName` for the folders and the names of the deployments).
 - **The settings of a deployment** that are not configuration are its `"Deployment"` key (`CentralDeploymentSettings`;
   in the central configuration, the defaults of every deployment, merged like the rest): `"Builders"` (the builders to
   deploy, all by default), `"SingleZipAsset"` (one asset for the deployment instead of one per App), `"Publish"` (the MSBuild properties of the publication of every host, applied as-is:

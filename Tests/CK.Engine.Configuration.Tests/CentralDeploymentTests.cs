@@ -180,6 +180,69 @@ public class CentralDeploymentTests
         ShouldFail( Create( _central, ("#Production", null!) ), "has no 'ckonf.json'" );
     }
 
+    [TestCase( "#Production", null, "Sample/Auth3" )]
+    [TestCase( "Paris/Shop/#Staging", null, "Paris/Shop" )]
+    [TestCase( "#", "the environment of a deployment is a name after the '#'", null )]
+    [TestCase( "Production", "the environment of a deployment is a name after the '#'", null )]
+    [TestCase( "#development", "the development (\"#Dev\")", null )]
+    [TestCase( "#Prod.1", "no other '#', no '.'", null )]
+    [TestCase( "Paris//#Staging", "a part of a domain is a name", null )]
+    [TestCase( "#Paris/#Staging", "a part of a domain is a name", null )]
+    [TestCase( "Assets/#Staging", "the folder of the assets", null )]
+    [TestCase( "Paris.Shop/#Staging", "a part of a domain has no '.'", null )]
+    [TestCase( "sample/auth3/#Staging", "spells the central domain 'sample/auth3'", null )]
+    public void ValidateName_is_the_rule_of_the_deployment_folders( string name, string? error, string? domain )
+    {
+        var e = CentralDeployment.ValidateName( name, "Sample/Auth3", out var d, out var environment );
+        if( error == null )
+        {
+            e.ShouldBeNull();
+            d.ShouldBe( domain );
+            environment.ShouldBe( name.Split( '/' )[^1] );
+        }
+        else
+        {
+            e.ShouldNotBeNull().ShouldContain( error );
+        }
+    }
+
+    [Test]
+    public void DiscoverFolders_returns_the_invalid_folders_with_their_error()
+    {
+        var central = Create( _central, ("#Production", "{}"), ("Paris.Shop/#Staging", "{}"), ("Assets/#Production", "{}"), (".build/#X", "{}") );
+        var folders = CentralDeployment.DiscoverFolders( central.RootFolder, "Sample/Auth3" );
+        folders.Select( f => (f.Name, f.Error == null) ).ShouldBe( [("#Production", true), ("Paris.Shop/#Staging", false)] );
+        folders[0].Folder.ShouldBe( central.RootFolder.Combine( "Deployment/#Production" ) );
+    }
+
+    [Test]
+    public void FindInheritedValues_is_the_rule_of_CheckPerDeployment_as_data()
+    {
+        var merged = (System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse( """
+            {
+              "Defaults": { "App": { "Port": 1 } },
+              "Builders": { "B": { "App": { "Local": { "Urls": "x", "Other": [ 1, 2 ] } } } },
+              "Demo": { "A": 1, "B": 2 }
+            }
+            """ )!;
+        var overlay = (System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse( """{ "Builders": { "B": { "App": { "Local": { "Other": [ 3 ] } } } }, "Demo": { "A": 3 } }""" )!;
+        var inherited = CentralDeployment.FindInheritedValues( merged,
+                                                               overlay,
+                                                               [
+                                                                   new PerDeploymentPattern( "", "Demo", "marker" ),
+                                                                   new PerDeploymentPattern( "Builders:B:App", "Local:*", "app", IsApp: true ),
+                                                                   new PerDeploymentPattern( "Builders:B:App", "Port", "port", IsApp: true ),
+                                                                   new PerDeploymentPattern( "", "Demo:B", "again" ),
+                                                                   new PerDeploymentPattern( "", "[", "invalid" )
+                                                               ],
+                                                               out var invalid );
+        inherited.ShouldBe( [new InheritedPerDeploymentValue( "Demo:B", "marker" ),
+                             new InheritedPerDeploymentValue( "Builders:B:App:Local:Urls", "app" ),
+                             new InheritedPerDeploymentValue( "Defaults:App:Port", "port" )] );
+        invalid.Count.ShouldBe( 1 );
+        invalid[0].ShouldContain( "'[' (invalid)" );
+    }
+
     [Test]
     public void the_package_declarations_are_App_patterns_on_the_anchors_and_their_fallbacks()
     {

@@ -170,12 +170,17 @@ public sealed class CentralDeployment
         var root = central.RootFolder.AppendPart( FolderName );
         if( !Directory.Exists( root ) ) return true;
         using var group = monitor.OpenInfo( $"Reading the deployments of '{root}'." );
-        var found = new List<(string Name, NormalizedPath Folder, string? Domain, string Environment)>();
-        bool success = Discover( monitor, central, root, root, [], found );
+        bool success = true;
         // The raw overlays.
         var raws = new Dictionary<string, Raw>( StringComparer.OrdinalIgnoreCase );
-        foreach( var (name, folder, domain, environment) in found )
+        foreach( var (name, folder, domain, environment, folderError) in DiscoverFolders( central.RootFolder, central.Configuration["Domain"] ) )
         {
+            if( folderError != null )
+            {
+                monitor.Error( $"Invalid deployment folder '{folder}': {folderError}" );
+                success = false;
+                continue;
+            }
             var file = folder.AppendPart( CentralConfiguration.FileName );
             if( !File.Exists( file ) )
             {
@@ -240,57 +245,90 @@ public sealed class CentralDeployment
                        JsonObject Overlay,
                        List<PerDeploymentMarker> Markers );
 
-    static bool Discover( IActivityMonitor monitor,
-                          CentralConfiguration central,
-                          NormalizedPath root,
-                          NormalizedPath folder,
-                          List<string> parts,
-                          List<(string, NormalizedPath, string?, string)> found )
+    /// <summary>
+    /// Finds the deployment folders of a solution (see <see cref="CentralDeployment"/>): the folders whose name starts with
+    /// '#' in its "Deployment" folder, sorted by path. "Deployment/Assets" and the folders whose name starts with '.' are
+    /// ignored. An invalid one (see <see cref="ValidateName"/>) is returned with its error.
+    /// </summary>
+    /// <param name="solutionFolder">The folder of the central "ckonf.json".</param>
+    /// <param name="centralDomain">The "Domain" of the central configuration.</param>
+    /// <returns>The deployment folders.</returns>
+    public static IReadOnlyList<DeploymentFolder> DiscoverFolders( NormalizedPath solutionFolder, string? centralDomain )
     {
-        bool success = true;
-        foreach( var d in Directory.EnumerateDirectories( folder ).Order( StringComparer.OrdinalIgnoreCase ) )
+        var found = new List<DeploymentFolder>();
+        var root = solutionFolder.AppendPart( FolderName );
+        if( Directory.Exists( root ) ) Discover( root, [], centralDomain, found );
+        return found;
+
+        static void Discover( NormalizedPath folder, List<string> parts, string? centralDomain, List<DeploymentFolder> found )
         {
-            var name = Path.GetFileName( d );
-            if( name.StartsWith( '.' ) ) continue;
-            if( parts.Count == 0 && name.Equals( "Assets", StringComparison.OrdinalIgnoreCase ) ) continue;
-            if( name.StartsWith( '#' ) )
+            foreach( var d in Directory.EnumerateDirectories( folder ).Order( StringComparer.OrdinalIgnoreCase ) )
             {
-                if( name.Length == 1 || name.Equals( "#Dev", StringComparison.OrdinalIgnoreCase ) || name.Equals( "#Development", StringComparison.OrdinalIgnoreCase ) )
+                var name = Path.GetFileName( d );
+                if( name.StartsWith( '.' ) ) continue;
+                if( parts.Count == 0 && name.Equals( "Assets", StringComparison.OrdinalIgnoreCase ) ) continue;
+                if( name.StartsWith( '#' ) )
                 {
-                    monitor.Error( $"Invalid deployment folder '{d}': the environment of a deployment is a name after the '#', and the development (\"#Dev\") is the central configuration." );
-                    success = false;
-                    continue;
-                }
-                string? domain;
-                if( parts.Count == 0 )
-                {
-                    domain = central.Configuration["Domain"];
+                    var deploymentName = parts.Count == 0 ? name : $"{string.Join( '/', parts )}/{name}";
+                    var error = ValidateName( deploymentName, centralDomain, out var domain, out var environment );
+                    found.Add( new DeploymentFolder( deploymentName, new NormalizedPath( d ), domain, environment, error ) );
                 }
                 else
                 {
-                    domain = string.Join( '/', parts );
-                    if( parts.Any( p => p.Contains( '.' ) ) )
-                    {
-                        monitor.Error( $"Invalid deployment folder '{d}': a part of a domain has no '.'." );
-                        success = false;
-                        continue;
-                    }
-                    if( domain.Equals( central.Configuration["Domain"], StringComparison.OrdinalIgnoreCase ) )
-                    {
-                        monitor.Error( $"The deployment folder '{d}' spells the central domain '{domain}': it is '{root.AppendPart( name )}'." );
-                        success = false;
-                        continue;
-                    }
+                    Discover( new NormalizedPath( d ), [.. parts, name], centralDomain, found );
                 }
-                var deploymentName = parts.Count == 0 ? name : $"{string.Join( '/', parts )}/{name}";
-                found.Add( (deploymentName, new NormalizedPath( d ), domain, name) );
-            }
-            else
-            {
-                success &= Discover( monitor, central, root, new NormalizedPath( d ), [.. parts, name], found );
             }
         }
-        return success;
+    }
+
+    /// <summary>
+    /// Validates the name of a deployment: its path in the "Deployment" folder, the environment ('#' and a name, never
+    /// "#Dev" or "#Development": the development is the central configuration) after the parts of its domain ("#Production",
+    /// "Paris/Shop/#Staging"). A part of a domain has no '.' and doesn't start with '#' or '.', the first one is not
+    /// "Assets", and a domain is not the central one (its deployments are directly in the "Deployment" folder).
+    /// </summary>
+    /// <param name="name">The name to validate.</param>
+    /// <param name="centralDomain">The "Domain" of the central configuration.</param>
+    /// <param name="domain">The domain of the deployment (the central one when the name has no domain part).</param>
+    /// <param name="environment">The environment of the deployment ("#Production").</param>
+    /// <returns>Null when the name is valid, the error otherwise.</returns>
+    public static string? ValidateName( string name, string? centralDomain, out string? domain, out string environment )
+    {
+        Throw.CheckNotNullArgument( name );
+        var parts = name.Replace( '\\', '/' ).Split( '/' );
+        environment = parts[^1];
+        domain = centralDomain;
+        if( environment.Length < 2
+            || environment[0] != '#'
+            || environment.Equals( "#Dev", StringComparison.OrdinalIgnoreCase )
+            || environment.Equals( "#Development", StringComparison.OrdinalIgnoreCase ) )
+        {
+            return "the environment of a deployment is a name after the '#', and the development (\"#Dev\") is the central configuration.";
+        }
+        if( environment.IndexOfAny( ['#', '.'], 1 ) >= 0 || environment.AsSpan( 1 ).IndexOfAny( Path.GetInvalidFileNameChars() ) >= 0 )
+        {
+            return $"the environment '{environment}' is a name after the '#' (no other '#', no '.').";
+        }
+        if( parts.Length == 1 ) return null;
+        var domainParts = parts[..^1];
+        if( domainParts.Any( p => p.Length == 0 || p[0] == '#' || p[0] == '.' || p.AsSpan().IndexOfAny( Path.GetInvalidFileNameChars() ) >= 0 ) )
+        {
+            return "a part of a domain is a name that doesn't start with '#' or '.'.";
+        }
+        if( domainParts[0].Equals( "Assets", StringComparison.OrdinalIgnoreCase ) )
+        {
+            return "\"Deployment/Assets\" is the folder of the assets, not a domain.";
+        }
+        if( domainParts.Any( p => p.Contains( '.' ) ) )
+        {
+            return "a part of a domain has no '.'.";
+        }
+        domain = string.Join( '/', domainParts );
+        if( domain.Equals( centralDomain, StringComparison.OrdinalIgnoreCase ) )
+        {
+            return $"it spells the central domain '{domain}': its deployments are directly in the \"{FolderName}\" folder ('{FolderName}/{environment}').";
+        }
+        return null;
     }
 
     static CentralDeployment? Resolve( IActivityMonitor monitor,
@@ -512,15 +550,14 @@ public sealed class CentralDeployment
                                     NormalizedPath builderFolder,
                                     IReadOnlyDictionary<string, IReadOnlyList<(string Pattern, string Source)>> appKeys )
     {
-        var reported = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
-        bool success = true;
+        var patterns = new List<PerDeploymentPattern>();
         foreach( var m in Markers )
         {
-            success &= Check( monitor, m.ObjectPath, m.Pattern, $"\"{PerDeploymentKey}\" of {m.Source}", reported );
+            patterns.Add( new PerDeploymentPattern( m.ObjectPath, m.Pattern, $"\"{PerDeploymentKey}\" of {m.Source}" ) );
         }
         foreach( var (key, source) in central.PerDeploymentKeys )
         {
-            success &= Check( monitor, "", key, source, reported );
+            patterns.Add( new PerDeploymentPattern( "", key, source ) );
         }
         // The builder in the deployment (the root of its configuration is its folder: the builders are found by path).
         var builderPath = central.FindBuilder( builderFolder )?.Path;
@@ -533,64 +570,77 @@ public sealed class CentralDeployment
                 var appPath = RelativePath( app.Configuration.Path );
                 foreach( var (pattern, source) in keys )
                 {
-                    success &= CheckApp( monitor, appPath, pattern, source, reported );
+                    patterns.Add( new PerDeploymentPattern( appPath, pattern, source, IsApp: true ) );
                 }
             }
         }
-        return success;
+        var inherited = FindInheritedValues( Merged, _overlay, patterns, out var invalidPatterns );
+        foreach( var e in invalidPatterns ) monitor.Error( e );
+        foreach( var v in inherited )
+        {
+            monitor.Error( $"The deployment '{Name}' inherits \"{v.Path}\" ({v.Source}): a value per deployment is written by the deployment itself, in '{Folder.AppendPart( CentralConfiguration.FileName )}' (null removes it)." );
+        }
+        return invalidPatterns.Count == 0 && inherited.Count == 0;
+    }
+
+    /// <summary>
+    /// Finds the values per deployment that a deployment inherits instead of writing them (the rule of
+    /// <see cref="CheckPerDeployment"/>, as data: the configurator checks the documents that it edits with it).
+    /// A value is written by the overlay when the overlay holds its path, or a prefix of it whose value is not an object
+    /// (a value, an array or null: the merge patch replaces it whole). A path is reported once, with the source of the
+    /// first pattern that covers it.
+    /// </summary>
+    /// <param name="merged">The merged configuration of the deployment (without its markers).</param>
+    /// <param name="overlay">The overlay of the deployment (its own "ckonf.json", without its markers).</param>
+    /// <param name="patterns">The patterns of the values per deployment.</param>
+    /// <param name="invalidPatterns">The messages of the invalid patterns (they are skipped).</param>
+    /// <returns>The inherited values per deployment.</returns>
+    public static IReadOnlyList<InheritedPerDeploymentValue> FindInheritedValues( JsonObject merged,
+                                                                                  JsonObject overlay,
+                                                                                  IEnumerable<PerDeploymentPattern> patterns,
+                                                                                  out IReadOnlyList<string> invalidPatterns )
+    {
+        Throw.CheckNotNullArgument( merged );
+        Throw.CheckNotNullArgument( overlay );
+        Throw.CheckNotNullArgument( patterns );
+        var reported = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
+        var result = new List<InheritedPerDeploymentValue>();
+        var invalid = new List<string>();
+        foreach( var (objectPath, pattern, source, isApp) in patterns )
+        {
+            if( !ConfigurationPathPattern.TryParse( pattern, out var p, out var error ) )
+            {
+                invalid.Add( $"Invalid value per deployment '{pattern}' ({source}): {error}." );
+                continue;
+            }
+            var o = Find( merged, objectPath );
+            foreach( var leaf in Leaves( o, "" ) )
+            {
+                if( p.Covers( leaf ) ) Add( Combine( objectPath, leaf ), source );
+            }
+            if( !isApp ) continue;
+            // The values that the App takes from the "Defaults:App" of the central configuration.
+            foreach( var leaf in Leaves( Find( merged, "Defaults:App" ), "" ) )
+            {
+                if( p.Covers( leaf ) && (o is not JsonObject app || Find( app, leaf ) == null) )
+                {
+                    Add( $"Defaults:App:{leaf}", source );
+                }
+            }
+        }
+        invalidPatterns = invalid;
+        return result;
+
+        void Add( string path, string source )
+        {
+            if( !IsWritten( overlay, path ) && reported.Add( path ) ) result.Add( new InheritedPerDeploymentValue( path, source ) );
+        }
     }
 
     static string RelativePath( string sectionPath )
     {
         var i = sectionPath.IndexOf( ':' );
         return i < 0 ? "" : sectionPath[(i + 1)..];
-    }
-
-    bool Check( IActivityMonitor monitor, string objectPath, string pattern, string source, HashSet<string> reported )
-    {
-        if( !ConfigurationPathPattern.TryParse( pattern, out var p, out var error ) )
-        {
-            monitor.Error( $"Invalid value per deployment '{pattern}' ({source}): {error}." );
-            return false;
-        }
-        bool success = true;
-        foreach( var leaf in Leaves( Find( Merged, objectPath ), "" ) )
-        {
-            if( !p.Covers( leaf ) ) continue;
-            success &= CheckWritten( monitor, Combine( objectPath, leaf ), source, reported );
-        }
-        return success;
-    }
-
-    bool CheckApp( IActivityMonitor monitor, string appPath, string pattern, string source, HashSet<string> reported )
-    {
-        if( !ConfigurationPathPattern.TryParse( pattern, out var p, out var error ) )
-        {
-            monitor.Error( $"Invalid value per deployment '{pattern}' ({source}): {error}." );
-            return false;
-        }
-        bool success = true;
-        var app = Find( Merged, appPath );
-        foreach( var leaf in Leaves( app, "" ) )
-        {
-            if( p.Covers( leaf ) ) success &= CheckWritten( monitor, Combine( appPath, leaf ), source, reported );
-        }
-        // The values that the App takes from the "Defaults:App" of the central configuration.
-        foreach( var leaf in Leaves( Find( Merged, "Defaults:App" ), "" ) )
-        {
-            if( p.Covers( leaf ) && (app == null || Find( (JsonObject)app, leaf ) == null) )
-            {
-                success &= CheckWritten( monitor, $"Defaults:App:{leaf}", source, reported );
-            }
-        }
-        return success;
-    }
-
-    bool CheckWritten( IActivityMonitor monitor, string path, string source, HashSet<string> reported )
-    {
-        if( IsWritten( _overlay, path ) || !reported.Add( path ) ) return true;
-        monitor.Error( $"The deployment '{Name}' inherits \"{path}\" ({source}): a value per deployment is written by the deployment itself, in '{Folder.AppendPart( CentralConfiguration.FileName )}' (null removes it)." );
-        return false;
     }
 
     // Written by the overlay: the overlay holds the path, or a prefix of it whose value is not an object (a value, an
@@ -654,6 +704,35 @@ public sealed class CentralDeployment
 
     static string Combine( string a, string b ) => a.Length == 0 ? b : $"{a}:{b}";
 }
+
+/// <summary>
+/// A deployment folder found by <see cref="CentralDeployment.DiscoverFolders"/>.
+/// </summary>
+/// <param name="Name">The name of the deployment: its path in the "Deployment" folder ("#Production", "Paris/Shop/#Staging").</param>
+/// <param name="Folder">The folder.</param>
+/// <param name="Domain">The domain of the deployment.</param>
+/// <param name="Environment">The environment ("#Production").</param>
+/// <param name="Error">Null when the folder is a valid deployment, the error otherwise (see <see cref="CentralDeployment.ValidateName"/>).</param>
+public sealed record DeploymentFolder( string Name, NormalizedPath Folder, string? Domain, string Environment, string? Error );
+
+/// <summary>
+/// A pattern of values per deployment (see <see cref="CentralDeployment.FindInheritedValues"/>).
+/// </summary>
+/// <param name="ObjectPath">The path of the object that the pattern is relative to ("" for the root).</param>
+/// <param name="Pattern">The pattern (<see cref="ConfigurationPathPattern"/>).</param>
+/// <param name="Source">Where the pattern comes from (for the messages).</param>
+/// <param name="IsApp">
+/// True when <see cref="ObjectPath"/> is an App: the values that the App takes from the <c>"Defaults:App"</c> of the
+/// configuration are covered too.
+/// </param>
+public sealed record PerDeploymentPattern( string ObjectPath, string Pattern, string Source, bool IsApp = false );
+
+/// <summary>
+/// A value per deployment that a deployment inherits instead of writing it (see <see cref="CentralDeployment.FindInheritedValues"/>).
+/// </summary>
+/// <param name="Path">The path of the value in the merged configuration.</param>
+/// <param name="Source">The source of the pattern that covers it.</param>
+public sealed record InheritedPerDeploymentValue( string Path, string Source );
 
 /// <summary>
 /// A <c>"$PER_DEPLOYMENT"</c> marker: a pattern of values per deployment, relative to the object that holds it.
