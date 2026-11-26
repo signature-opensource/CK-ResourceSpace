@@ -175,7 +175,10 @@ Deployment/
   folder has a `ckonf.deployment.json` (`{ "Deployment": "#Production", "AppContext": "Front" }`,
   `CentralDeployment.WriteBuilderFile`), and its `ckonf.json` is the projection of the AppContext in the merged
   configuration (`CentralDeployment.WriteBuilderProjection`): the `"AppProject"` of each App is the original `.App`
-  project, its `"HostProject"` the copy of the original host next to the generated Builder (named like it). Its `AppBuilderContext.Deployment` is the deployment: `TryResolveSecret` fails
+  project, or, when the deployment adds packages to the App, its wrapper project (`CentralDeployment.GetAppProjectFolder`:
+  next to the generated Builder, named like the original, it references the original `.App` project and the added
+  packages, so that the BinPath of the App has both); its `"HostProject"` is the copy of the original host next to the
+  generated Builder (named like it). Its `AppBuilderContext.Deployment` is the deployment: `TryResolveSecret` fails
   (the build of a deployment never reads a secret, never touches a database). It writes the manifest of each host,
   `$StObjGen/Deployment.manifest` (`AppContextConfiguration.WriteDeploymentManifests`; CK.AppDeployment adds it to the
   file that the publication writes next to the executable): the full name, the deployment and its bases, the

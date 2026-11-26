@@ -378,9 +378,33 @@ public sealed class CentralDeployment
     }
 
     /// <summary>
+    /// The suffix of the file name of the wrapper project of an App to which this deployment adds packages (see
+    /// <see cref="GetAppProjectFolder"/>): "Front.App.Deployment.csproj" in the folder "Front.App".
+    /// </summary>
+    public const string WrapperProjectSuffix = ".Deployment";
+
+    /// <summary>
+    /// Gets the folder of the ".App" project that the generated Builder of this deployment uses for an App: the original
+    /// one, or, when the deployment adds packages to the App (<see cref="CentralDeploymentSettings.GetPackages(string)"/>),
+    /// the folder of its wrapper project, next to the generated Builder and named like the original (the BinPath of the App
+    /// is named after it): the wrapper references the original ".App" project and the added packages, so that its output
+    /// has both. CK.AppDeployment generates it.
+    /// </summary>
+    /// <param name="builderFolder">The folder of the generated Builder.</param>
+    /// <param name="app">The App of the solution.</param>
+    /// <returns>The folder of the ".App" project to use.</returns>
+    public NormalizedPath GetAppProjectFolder( NormalizedPath builderFolder, CentralApp app )
+    {
+        return Settings.GetPackages( app.Name ).Count == 0
+                ? app.AppProjectFolder
+                : builderFolder.RemoveLastPart().AppendPart( app.AppProjectFolder.LastPart );
+    }
+
+    /// <summary>
     /// Writes the "ckonf.json" of the Builder of this deployment generated for one of the AppContexts of the solution: the
-    /// projection of the AppContext in the merged configuration, its Apps on their original ".App" project ("AppProject":
-    /// the generated Builder references it), their ".Host" project the copy next to the generated Builder (named after the
+    /// projection of the AppContext in the merged configuration, its Apps on their ".App" project ("AppProject": the
+    /// original one, or its wrapper when the deployment adds packages to the App, see <see cref="GetAppProjectFolder"/>; the
+    /// generated Builder references it), their ".Host" project the copy next to the generated Builder (named after the
     /// original one).
     /// </summary>
     /// <param name="monitor">The monitor to use.</param>
@@ -419,7 +443,7 @@ public sealed class CentralDeployment
                                                    }
                                                    node.Remove( "AppProject" );
                                                    node.Remove( "HostProject" );
-                                                   node["AppProject"] = Path.GetRelativePath( folder, o.AppProjectFolder ).Replace( '\\', '/' );
+                                                   node["AppProject"] = Path.GetRelativePath( folder, GetAppProjectFolder( folder, o ) ).Replace( '\\', '/' );
                                                    node["HostProject"] = $"../{o.HostProjectFolder.LastPart}";
                                                } );
         return r && success;

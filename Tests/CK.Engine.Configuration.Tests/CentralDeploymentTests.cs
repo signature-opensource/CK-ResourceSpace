@@ -459,4 +459,22 @@ public class CentralDeploymentTests
 
         production.WriteBuilderProjection( TestHelper.Monitor, central, "Nope", folder, [new IdentityContributor()] ).ShouldBeFalse();
     }
+
+    [Test]
+    public void an_App_to_which_the_deployment_adds_packages_is_projected_on_its_wrapper()
+    {
+        var central = Create( _twoAppContexts, ("#Production", """{ "Deployment": { "Apps": { "$Front": { "Packages": [ "Some.Extension" ] } } } }""") );
+        var production = Load( central ).Single();
+        var folder = central.RootFolder.Combine( "Deployment/.build/Production/Front.Builder" );
+        Directory.CreateDirectory( folder );
+        var front = central.AllApps.Single( a => a.Name == "$Front" );
+        var auth3 = central.AllApps.Single( a => a.Name == "$Auth3" );
+        production.GetAppProjectFolder( folder, front ).ShouldBe( central.RootFolder.Combine( "Deployment/.build/Production/Front.App" ),
+                                                                   "Next to the generated Builder, named like the original." );
+        production.GetAppProjectFolder( folder, auth3 ).ShouldBe( auth3.AppProjectFolder, "No added package: the original project." );
+        production.WriteBuilderProjection( TestHelper.Monitor, central, "Front", folder, [new IdentityContributor()] ).ShouldBeTrue();
+        var projected = System.Text.Json.Nodes.JsonNode.Parse( File.ReadAllText( folder.AppendPart( "ckonf.json" ) ),
+                                                               documentOptions: new System.Text.Json.JsonDocumentOptions { CommentHandling = System.Text.Json.JsonCommentHandling.Skip } )!;
+        projected["App"]!["AppProject"]!.GetValue<string>().ShouldBe( "../Front.App" );
+    }
 }
