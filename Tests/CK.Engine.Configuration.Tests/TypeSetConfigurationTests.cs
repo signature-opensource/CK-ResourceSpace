@@ -81,4 +81,28 @@ public class TypeSetConfigurationTests
             texts.ShouldContain( t => t.Contains( "form a cycle" ) );
         }
     }
+
+    [Test]
+    public void TryRead_reads_the_type_names_and_applies_the_exclusions_downward()
+    {
+        var some = typeof( SomeType ).AssemblyQualifiedName;
+        var spec = typeof( SpecializedType ).AssemblyQualifiedName;
+        var party = ImmutableConfigurationSection.CreateFromJson( "Local", $$"""{ "ExcludedTypes": "{{spec}}", "Other": 3 }""" );
+        var p = TypeSetConfiguration.TryRead( TestHelper.Monitor, "$Party", party ).ShouldNotBeNull();
+        p.Types.ShouldBeEmpty();
+        p.ExcludedTypes.ShouldBe( [typeof( SpecializedType )] );
+
+        var client = ImmutableConfigurationSection.CreateFromJson( "App", $$"""{ "Types": [ "{{some}}" ], "NgApp": true }""" );
+        var c = TypeSetConfiguration.TryRead( TestHelper.Monitor, "App", client, p ).ShouldNotBeNull();
+        c.Types.ShouldBe( [typeof( SomeType )] );
+        c.ExcludedTypes.ShouldBe( [typeof( SpecializedType )] );
+
+        var bad = ImmutableConfigurationSection.CreateFromJson( "App", $$"""{ "Types": [ "{{spec}}", { "Name": "{{some}}" } ] }""" );
+        using( TestHelper.Monitor.CollectTexts( out var texts ) )
+        {
+            TypeSetConfiguration.TryRead( TestHelper.Monitor, "App", bad, p ).ShouldBeNull();
+            texts.ShouldContain( t => t.Contains( "must be a type name" ) );
+            texts.ShouldContain( t => t.Contains( "the exclusions apply downward" ) );
+        }
+    }
 }

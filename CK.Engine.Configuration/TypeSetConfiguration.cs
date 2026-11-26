@@ -1,6 +1,7 @@
 using CK.Core;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Xml.Linq;
 
 namespace CK.Setup;
@@ -49,6 +50,67 @@ public sealed class TypeSetConfiguration
         Parent = (string?)e.Attribute( EngineConfiguration.xParent );
         _types = new HashSet<Type>( EngineConfiguration.TypesFromXml( e, EngineConfiguration.xTypes, EngineConfiguration.xType ) );
         _excludedTypes = new HashSet<Type>( EngineConfiguration.TypesFromXml( e, EngineConfiguration.xExcludedTypes, EngineConfiguration.xType ) );
+    }
+
+    /// <summary>
+    /// Gets the keys of a section that are a type set: "Types" and "ExcludedTypes" (case insensitive). A set owns them:
+    /// they are compile time keys, the run time ignores them.
+    /// </summary>
+    public static IReadOnlySet<string> Keys { get; } = new HashSet<string>( StringComparer.OrdinalIgnoreCase ) { "Types", "ExcludedTypes" };
+
+    /// <summary>
+    /// Reads a set from the <see cref="Keys"/> of a section (a local party's "Local", a client's section): each one is a
+    /// type name or a list of type names (assembly qualified). The other keys of the section are not the set's: they are
+    /// ignored. The exclusions apply downward: a type that the <paramref name="parent"/> excludes can't be added, and the
+    /// exclusions of the parent are the ones of this set.
+    /// </summary>
+    /// <param name="monitor">The monitor that logs the errors.</param>
+    /// <param name="name">The name of the set.</param>
+    /// <param name="section">The section that holds the <see cref="Keys"/>.</param>
+    /// <param name="parent">The parent set (its <see cref="Parent"/> is not set by this method), if any.</param>
+    /// <returns>The set or null on error.</returns>
+    public static TypeSetConfiguration? TryRead( IActivityMonitor monitor,
+                                                 string name,
+                                                 ImmutableConfigurationSection section,
+                                                 TypeSetConfiguration? parent = null )
+    {
+        var set = new TypeSetConfiguration( name );
+        bool success = true;
+        foreach( var key in Keys )
+        {
+            var list = section.TryGetSection( key );
+            if( list == null ) continue;
+            var target = key == "Types" ? set._types : set._excludedTypes;
+            IEnumerable<ImmutableConfigurationSection> items = list.Value != null ? [list] : list.GetChildren();
+            foreach( var item in items )
+            {
+                var typeName = item.Value;
+                if( string.IsNullOrWhiteSpace( typeName ) )
+                {
+                    monitor.Error( $"\"{item.Path}\" must be a type name (assembly qualified)." );
+                    success = false;
+                    continue;
+                }
+                var type = SimpleTypeFinder.WeakResolver( typeName, throwOnError: false );
+                if( type == null )
+                {
+                    monitor.Error( $"Unable to find the type '{typeName}' of \"{item.Path}\"." );
+                    success = false;
+                    continue;
+                }
+                target.Add( type );
+            }
+        }
+        if( parent != null )
+        {
+            foreach( var t in set._types.Where( parent._excludedTypes.Contains ) )
+            {
+                monitor.Error( $"The type set '{name}' (\"{section.Path}\") adds the type '{t:N}' that its parent '{parent.Name}' excludes: the exclusions apply downward." );
+                success = false;
+            }
+            set._excludedTypes.UnionWith( parent._excludedTypes );
+        }
+        return success ? set : null;
     }
 
     /// <summary>
