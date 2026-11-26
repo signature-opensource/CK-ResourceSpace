@@ -13,7 +13,7 @@ namespace CK.AppBuilder.Tests;
 [TestFixture]
 public class ConfigurationSecretTests
 {
-    static AppBuilderConfiguration Load( string ckonf )
+    static AppContextConfiguration Load( string ckonf )
     {
         NormalizedPath root = Path.Combine( Path.GetTempPath(), "CK.AppBuilder.Tests", Guid.NewGuid().ToString( "N" ) );
         Directory.CreateDirectory( root );
@@ -23,7 +23,7 @@ public class ConfigurationSecretTests
         File.WriteAllText( builder.AppendPart( "ckonf.json" ), ckonf );
         Directory.CreateDirectory( root.AppendPart( "Backs.App" ) );
         Directory.CreateDirectory( root.AppendPart( "Backs.Host" ) );
-        return AppBuilderConfiguration.Load( TestHelper.Monitor, builder, "bin/Debug/net10.0", null, out _ ).ShouldNotBeNull();
+        return AppContextConfiguration.Load( TestHelper.Monitor, builder, "bin/Debug/net10.0", null, out _ ).ShouldNotBeNull();
     }
 
     static void DeclareParty( AppConfiguration a )

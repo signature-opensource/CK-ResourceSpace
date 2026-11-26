@@ -10,7 +10,7 @@ using System.Text.Json.Nodes;
 
 namespace CK.Setup;
 
-public sealed partial class AppBuilderConfiguration
+public sealed partial class AppContextConfiguration
 {
     /// <summary>
     /// The manifest of a host built for a deployment, written in the "$StObjGen" folder of its ".Host" project by the

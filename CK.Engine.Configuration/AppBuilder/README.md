@@ -1,22 +1,24 @@
 # The App builder model
 
-`AppBuilderConfiguration` reads the `ckonf.json` of a "XXX.Builder" project, creates the `EngineConfiguration`
-(a BinPath per App) and writes the projections (the `appsettings.json` of the hosts). When the repository has a
-central configuration (`CentralConfiguration`, see [below](#the-central-configuration)), the `ckonf.json` of each
-builder is itself a projection of it.
+**An AppContext** is what one engine run builds: its Apps (each one a process, a party) and the AppContext aspects that
+apply to all of them (one database setup). **Its Builder**, the "{Name}.Builder" project, manages it: it runs the
+engine on it. `AppContextConfiguration` reads the `ckonf.json` of a Builder, creates the `EngineConfiguration` (a
+BinPath per App) and writes the projections (the `appsettings.json` of the hosts). When the repository has a central
+configuration (`CentralConfiguration`, see [below](#the-central-configuration)), the `ckonf.json` of each Builder is
+itself a projection of its AppContext.
 
-## `ckonf.json`: the configuration of the builder
+## `ckonf.json`: the configuration of the AppContext
 
-When the "XXX.Builder" project has a `ckonf.json`, it is the configuration of what the builder builds in one engine run:
-its App (or its Apps) with the configuration of its host, and the aspects. A builder usually builds one App:
+When the "{Name}.Builder" project has a `ckonf.json`, it is the configuration of its AppContext: its App (or its Apps)
+with the configuration of its host, and the aspects. An AppContext usually has one App:
 
 ```jsonc
 {
-  // The Builder aspects: they apply to the whole engine run.
+  // The AppContext aspects: they apply to the whole engine run.
   "Aspects": { "SqlServer": { "DefaultDatabaseConnectionString": "Server=.;Database=MyDB;Integrated Security=True" } },
   "App": {
-    // Optional: the name of the builder's folder without ".Builder" ("Front.Builder" builds the App "Front").
-    "Name": "Front",
+    // Optional: the party of the AppContext ("Front.Builder" builds the App "$Front").
+    "Name": "$Front",
     // The aspects of this App.
     "Aspects": { "Globalization": { "ActiveCultures": "fr, en" } },
     "FullName": "Sample/Auth3/$Front/#Dev",
@@ -26,32 +28,35 @@ its App (or its Apps) with the configuration of its host, and the aspects. A bui
 }
 ```
 
-A builder that builds several Apps (they share the Builder aspects: one database) lists them, each one with its name:
+An AppContext of several Apps (they share the AppContext aspects: one database) lists them, each one with its name:
 
 ```jsonc
 {
   "Aspects": { "SqlServer": { ... } },
   "Apps": [
     {
-      "Name": "Back1",
+      "Name": "$Back1",
       "Types": [ "CK.Core.IActivityMonitor, CK.ActivityMonitor",
                  { "Name": "CK.Core.IParallelLogger, CK.ActivityMonitor", "Kind": "IsContainerConfiguredService|IsScoped" } ],
       "FullName": "Sample/MultiBinPath/$Back1/#Dev"
     },
-    { "Name": "Back2", ... }
+    { "Name": "$Back2", ... }
   ]
 }
 ```
 
 - **`"App"` XOR `"Apps"`:** one of them, not both. The names are unique (case insensitive).
-- **An App is a process:** the App "Back1" is the "../Back1.App" project (its code; its bin folder is the one of the
-  builder: `bin/{Configuration}/{TargetFramework}`) and the "../Back1.Host" project (its host, the `ProjectPath` of
-  its engine BinPath). `"AppProject"` and `"HostProject"` (relative to the `ckonf.json` folder) depart from this
-  convention. A path that leaves the solution's folder is an error.
+- **The name of an App is its party name:** `"$Back1"`, possibly after the segments of its domain relative to the domain
+  of the solution (`"Customers.$Acme"`). The single App is `"$<AppContext name>"` by default.
+- **An App is a process:** the App "$Back1" is the "../Back1.App" project (its code; its bin folder is the one of the
+  Builder: `bin/{Configuration}/{TargetFramework}`; its engine BinPath is named after it: "Back1") and the
+  "../Back1.Host" project (its host, the `ProjectPath` of its engine BinPath). `"AppProject"` and `"HostProject"`
+  (relative to the `ckonf.json` folder) depart from this convention: the projection of a central configuration always
+  writes them. A path that leaves the solution's folder is an error.
 - **The compile time keys of an App:** `Name`, `Types` (an assembly qualified name, or `{ "Name", "Kind" }`),
   `ExcludedTypes`, `Assemblies`, `DiscoverAssembliesFromPath`, `CompileOption`, `GenerateSourceFiles`, `AppProject`,
   `HostProject` and `Aspects`. The other keys are the configuration of the host.
-- **The aspects are compile time,** at the root (the Builder aspects) and in an App (its aspects), keyed by their
+- **The aspects are compile time,** at the root (the AppContext aspects) and in an App (its aspects), keyed by their
   name (see [The aspects](#the-aspects) below). An aspect key that nothing reads is an error.
 - **The keys are case insensitive** (it is a configuration): a duplicate key (`Local` and `local`) is an error. The
   order of the Apps means nothing: the engine receives them sorted by name.
@@ -64,39 +69,54 @@ A builder that builds several Apps (they share the Builder aspects: one database
 
 ## The central configuration
 
-A solution of several builders (several parties) may describe them once: an optional `ckonf.json` at the root of the
-repository (its git root, next to `#Dev`), read by `CentralConfiguration`. The `ckonf.json` of each of its builders is
-then generated from it (its first line says so, it is written only when it changes): edit the central file, not the
-projection.
+A solution of several AppContexts (several parties) may describe them once: an optional `ckonf.json` at the root of
+the repository (its git root, next to `#Dev`), read by `CentralConfiguration`. The `ckonf.json` of each Builder is then
+generated from its AppContext (its first line says so, it is written only when it changes): edit the central file, not
+the projection.
 
 ```jsonc
 {
+  // The domain of the solution: the domain of its parties, and the prefix of the projects of its Apps ("Auth3").
   "Domain": "Sample/Auth3",
   "GlobalDomainPrefix": "Sample",
   // The defaults of every App: merged in each App, the App wins (the objects are merged).
   "Defaults": { "App": { "Logging": { "LogLevel": { "Default": "Warning" } } } },
-  // The builders, keyed by the path of their folder.
-  "Builders": {
-    "Auth3/Auth3.Auth3.Builder": { "Aspects": { "SqlServer": { ... } }, "App": { "Local": { ... } } },
-    "Front/Auth3.Front.Builder": { "App": { "Local": { ... } } }
+  // The AppContexts, keyed by their name.
+  "AppContexts": {
+    // The Builder "PrimaryServer/PrimaryServer.Builder"; the Apps "PrimaryServer/Auth3.Auth3.App" (and ".Host") and
+    // "PrimaryServer/Auth3.Jobs.App".
+    "PrimaryServer": {
+      "RootPath": "PrimaryServer",
+      "Aspects": { "SqlServer": { ... } },
+      "Apps": [ { "Name": "$Auth3", "Local": { ... } }, { "Name": "$Jobs", "Local": { ... } } ]
+    },
+    // The Builder "Front/Front.Builder"; its single App "$Front" is "Front/Auth3.Front.App".
+    "Front": { "RootPath": "Front", "App": { "Local": { ... } } }
   },
-  // The links between the parties; "Domain", "GlobalDomainPrefix" and "Links" are read by the AppIdentity contributor
-  // (the name of an App is the identity of its party: "Auth3.Front" is "$Front" of "Sample/Auth3").
+  // The links between the parties, read by the AppIdentity contributor.
   "Links": [ ... ]
 }
 ```
 
-- **A builder is keyed by the path of its folder,** relative to the root, downward only (`..` is an error). Its entry is
-  exactly its `ckonf.json` (`"Aspects"`, `"App"` or `"Apps"`). The names of the Apps are unique in the whole solution.
+- **An AppContext is keyed by its name:** letters, digits, `_`, `-` and `.` (no `$`: it is not a party), unique in the
+  solution. Its entry is its `ckonf.json` (`"Aspects"`, `"App"` or `"Apps"`) and its optional `"RootPath"`.
+- **`"RootPath"`** (empty by default: the root of the repository) is the folder of its projects, relative to the root,
+  downward only (`..` is an error): its Builder is `{RootPath}/{Name}.Builder`, its Apps are
+  `{RootPath}/{RelativeDomain}.{App name without '$'}.App` and `.Host` (`"AppProject"` and `"HostProject"` depart from
+  this convention, relative to the `RootPath`). It is not projected.
+- **The domain of the solution** (`"Domain"`, `"GlobalDomainPrefix"`: `CentralConfiguration.Domain` and
+  `RelativeDomain`) names the projects of the Apps: the domain without its global prefix, `/` mapped to `.` ("Auth3"):
+  an assembly name is global, it carries the identity of the solution. Without domain, the projects are named after
+  the App alone. The names of the Apps are unique in the whole solution.
 - **The other root keys belong to the contributors:** the engine of a contributor declares the keys it handles
   (`[assembly: CentralConfigurationKey( "Links", PerDeployment = ["[*]:Link:Address"] )]`, claimed before its
   contributors project; `CentralProjectionContext.ClaimKey` for a key that only its code knows) and its contributors
-  complete the Apps of the builder being projected (`IAppBuilderContributor.ProjectFromCentral`). A root key that no contributor claims is an error, except `"$schema"` and
-  `"$configurator"` (`CentralConfiguration.ConfiguratorKey`: the source of the configurator's catalog, ignored by the
-  builders). The meaning of what
-  they project is checked by the builder that reads its projection, as for a hand written `ckonf.json`.
-- **A builder of the repository that is not in `"Builders"` is an error** when the repository has a central
-  configuration.
+  complete the Apps of the AppContext being projected (`IAppBuilderContributor.ProjectFromCentral`). A root key that no
+  contributor claims is an error, except `"$schema"` and `"$configurator"` (`CentralConfiguration.ConfiguratorKey`: the
+  source of the configurator's catalog, ignored by the Builders). The meaning of what they project is checked by the
+  Builder that reads its projection, as for a hand written `ckonf.json`.
+- **A Builder of the repository whose AppContext is not in `"AppContexts"` is an error** when the repository has a
+  central configuration.
 
 ### The deployments
 
@@ -119,7 +139,7 @@ Deployment/
   other value (an array included) replaces. It overlays the central configuration, or the deployment that its
   `"$BASE"` names. The structure can change (a removed party, another feature): the merged configuration is checked like
   the central one.
-- **Every builder run writes its merged configuration**, `ckonf.merged.json`, next to it, when it changes (its first line
+- **Every Builder run writes its merged configuration**, `ckonf.merged.json`, next to it, when it changes (its first line
   lists its sources).
 - **A value "per deployment"** (an address, a public URL) must be written by the deployment itself, in its own overlay
   (`null` counts): inherited from the central configuration or from its base, it is a build error. They are declared:
@@ -132,41 +152,41 @@ Deployment/
     when only the code knows it); `AppConfiguration.AddPerDeploymentKey( path )` for a reader of an App; the
     `PerDeployment` of an `[assembly: CentralConfigurationKey]` (or `CentralProjectionContext.AddPerDeploymentKey`) for a
     contributor's central keys;
-  - by the builder: the size of a fleet (`"InstanceCount"`, `"Instances"`, `"MaxInstanceCount"` of an App that is a
+  - by the Builder: the size of a fleet (`"InstanceCount"`, `"Instances"`, `"MaxInstanceCount"` of an App that is a
     template).
 
-  A value of an App is the one of its entry in `"Builders"`, otherwise the one of `"Defaults:App"`: the deployment writes
-  the one it uses. `CentralDeployment.CheckPerDeployment` checks them (the builder runs it for its own Apps); the rule is
+  A value of an App is the one of its entry in `"AppContexts"`, otherwise the one of `"Defaults:App"`: the deployment
+  writes the one it uses. `CentralDeployment.CheckPerDeployment` checks them (the Builder runs it for its own Apps); the rule is
   `CentralDeployment.FindInheritedValues` (data, no file: the configurator checks the documents it edits with it, like
   `DiscoverFolders` and `ValidateName` for the folders and the names of the deployments).
 - **The settings of a deployment** that are not configuration are its `"Deployment"` key (`CentralDeploymentSettings`;
-  in the central configuration, the defaults of every deployment, merged like the rest): `"Builders"` (the builders to
-  deploy, all by default), `"SingleZipAsset"` (one asset for the deployment instead of one per App), `"Publish"` (the MSBuild properties of the publication of every host, applied as-is:
+  in the central configuration, the defaults of every deployment, merged like the rest): `"AppContexts"` (the names of
+  the AppContexts to deploy, all by default), `"SingleZipAsset"` (one asset for the deployment instead of one per App), `"Publish"` (the MSBuild properties of the publication of every host, applied as-is:
   `{ "RuntimeIdentifier": "linux-x64", "SelfContained": true, "PublishSingleFile": true }`) and `"Apps"` (the ones of an
-  App, over them: `"Apps": { "Auth3.Worker": { "Publish": { "PublishSingleFile": "" } } }`, an empty value resets a
+  App by its name, over them: `"Apps": { "$Worker": { "Publish": { "PublishSingleFile": "" } } }`, an empty value resets a
   property). They are not modeled: only their shape is checked (`CentralDeploymentSettings.GetPublishProperties`).
-- **The build of a deployment** (CK.AppDeployment) runs, for each deployed builder, a builder generated for it: its folder
-  has a `ckonf.deployment.json` (`{ "Deployment": "#Production", "Builder": "Front/Auth3.Front.Builder" }`,
-  `CentralDeployment.WriteBuilderFile`), and its `ckonf.json` is the projection of the builder in the merged configuration
-  (`CentralDeployment.WriteBuilderProjection`): the `"AppProject"` of each App is the original `.App` project, its host is
-  the copy next to the generated builder. Its `AppBuilderContext.Deployment` is the deployment: `TryResolveSecret` fails
+- **The build of a deployment** (CK.AppDeployment) runs, for each deployed AppContext, a Builder generated for it: its
+  folder has a `ckonf.deployment.json` (`{ "Deployment": "#Production", "AppContext": "Front" }`,
+  `CentralDeployment.WriteBuilderFile`), and its `ckonf.json` is the projection of the AppContext in the merged
+  configuration (`CentralDeployment.WriteBuilderProjection`): the `"AppProject"` of each App is the original `.App`
+  project, its `"HostProject"` the copy of the original host next to the generated Builder (named like it). Its `AppBuilderContext.Deployment` is the deployment: `TryResolveSecret` fails
   (the build of a deployment never reads a secret, never touches a database). It writes the manifest of each host,
-  `$StObjGen/Deployment.manifest` (`AppBuilderConfiguration.WriteDeploymentManifests`; CK.AppDeployment adds it to the
+  `$StObjGen/Deployment.manifest` (`AppContextConfiguration.WriteDeploymentManifests`; CK.AppDeployment adds it to the
   file that the publication writes next to the executable): the full name, the deployment and its bases, the
   publication properties of the host, the names of the secrets the host needs ("Secrets") and of the optional ones ("OptionalSecrets"), its values per deployment; for a fleet, its instances (each configured one with
   its full name, its start arguments `--Instance=Name` and its values per deployment resolved, and the indexes of the
   dynamic ones of an Opened fleet). The asset name of a deployment
   (`CentralDeployment.AssetName`) drops the `#` and maps `/` to `.`: `Production`, `Paris.Shop.Staging`; the asset
-  folder of an App (`CentralDeployment.GetAssetFolder`) is `Production-Auth3.Front` (one asset per App, the default) or
+  folder of an App (`CentralDeployment.GetAssetFolder`, named after its projects) is `Production-Auth3.Front` (one asset per App, the default) or
   `Production/Auth3.Front` (`"SingleZipAsset": true`).
 
 ## The aspects
 
 An aspect is a configurable type of a model, declared with CK.AppBuilder.Abstractions: a package (a concrete
 `IResourceGroup`) decorated with
-`[AppBuilderAspect( "Name", TypeActivation.X )]` (a Builder aspect, `IAppBuilderAspect`: one per engine run, at the root
+`[AppContextAspect( "Name", TypeActivation.X )]` (an AppContext aspect, `IAppContextAspect`: one per engine run, at the root
 `"Aspects"`) or `[AppAspect( "Name", TypeActivation.X )]` (an App aspect, `IAppAspect`: in the `"Aspects"` of an App).
-The builder finds them in the type sets of the Apps, before the contributors run:
+The Builder finds them in the type sets of the Apps, before the contributors run:
 
 - **The types drive, the sections configure:** an aspect is present when it is a member of the set of an App (its
   activation `ByDefault` or `Required`) or when its key is declared (`Optional`), unless its key is `false` (an error
@@ -175,19 +195,19 @@ The builder finds them in the type sets of the Apps, before the contributors run
   `IConfiguration`, null for a bare `true` or when its activation makes it present) and its options (below); it reads
   its settings and throws on an invalid value.
 - **An aspect has options:** an `IAppAspectOption<TAspect>` decorated with `[AppAspectOption( "Name", TypeActivation.X )]`
-  (or an `IAppBuilderAspectOption<TAspect>` with `[AppBuilderAspectOption]`) is configured in the section of its aspect
+  (or an `IAppContextAspectOption<TAspect>` with `[AppContextAspectOption]`) is configured in the section of its aspect
   by its name, like the options of the party features: a section or `true` enables it, `false` disables it, nothing
-  is its activation (`ConfigurationOptionSelector` of CK.Configuration). The builder orders the options of the aspect
+  is its activation (`ConfigurationOptionSelector` of CK.Configuration). The Builder orders the options of the aspect
   (the topology attributes between options, `ConfigurableOptions` of CK.ResourceSpace), selects and creates them (one
   public constructor, with its optional `IConfiguration` section), then gives them to the aspect's constructor: its
   `IReadOnlyList<IAppAspectOption<TAspect>>` parameter (an option of a base aspect applies to the derived ones).
-- **It applies itself:** it implements `IAppBuilderAspectApply` or `IAppAspectApply` (here: `IAppBuilderAspect` and
-  `IAppAspect` are markers, their `Apply` works on the builder's model). `IAppBuilderAspectApply.Apply( monitor, context,
+- **It applies itself:** it implements `IAppContextAspectApply` or `IAppAspectApply` (here: `IAppContextAspect` and
+  `IAppAspect` are markers, their `Apply` works on the AppContext's model). `IAppContextAspectApply.Apply( monitor, context,
   apps )` (the Apps whose set contains it) or `IAppAspectApply.Apply( monitor, context, app )` ensures and configures its engine aspect configurations and projects its
   run time settings in the hosts: `AppConfiguration.ProjectValue( path, value )` writes a value in a root section of
   the host's `appsettings.json` (that can't be a key of the App).
 
-The "SqlServer" aspect (`SqlServerAspect`, CK.SqlServer.Setup.Model) is a Builder aspect: its
+The "SqlServer" aspect (`SqlServerAspect`, CK.SqlServer.Setup.Model) is an AppContext aspect: its
 `DefaultDatabaseConnectionString` is projected as `"SqlServer": { "DefaultDatabaseConnectionString" }` in each host.
 
 ## The configuration levels and `"$LOCK"`
@@ -207,7 +227,7 @@ contributors) are `Init`. The configuration can only lower it:
 }
 ```
 
-- **A `"$LOCK"` is a build input:** the builder removes them before anything reads the configuration, they are never
+- **A `"$LOCK"` is a build input:** the Builder removes them before anything reads the configuration, they are never
   projected. In the central `ckonf.json`, `Defaults:App` can hold one for every App (the lowest level wins).
 - **A value restricted to `Compile` is burnt:** it is not written in the host's `appsettings.json`, it goes to the
   `CompiledValues` of the App's BinPath and the generated code gives it to the host after its other configuration
@@ -222,10 +242,10 @@ contributors) are `Init`. The configuration can only lower it:
   (`IAppBuilderContributor.ResolveSections`): an option is in the section of its owner, in each concrete owner of the App
   (the AppIdentity contributor resolves the options of the features and of the client features, the clients are the
   "Client" anchors). With a `Value`, another configured value is an error and an absent one is burnt with it.
-- **A Builder aspect's `"$LOCK"`** locks the values it projects in the hosts (`AppConfiguration.ProjectValue( path, value, origin )`).
+- **An AppContext aspect's `"$LOCK"`** locks the values it projects in the hosts (`AppConfiguration.ProjectValue( path, value, origin )`).
 - **The errors:** an invalid level or pattern, a value that no code declares, a level above the capability of the code.
 
-The builder applies them (`AppBuilderConfiguration.ApplyLocks`) once the contributors have contributed.
+The Builder applies them (`AppContextConfiguration.ApplyLocks`) once the contributors have contributed.
 
 ## The secrets
 
@@ -253,14 +273,14 @@ A secret is never written in a configuration file: its place holds a **handle**,
   secret is declared is reported: the development configuration accepts it (a known test secret, an Integrated Security
   connection string).
 - **An engine that needs the value at build time** (the setup of a development database) resolves it with
-  `AppBuilderContext.TryResolveSecret`, from the `#Dev/Secrets.json` file (`AppBuilderConfiguration.TryLoadDevSecrets`):
+  `AppBuilderContext.TryResolveSecret`, from the `#Dev/Secrets.json` file (`AppContextConfiguration.TryLoadDevSecrets`):
   the value is never projected nor burnt.
 - **An optional handle**, `{ "$SECRET?": "<Name>" }`, names a secret that may be missing: the host then leaves its path
   absent, as if nothing were configured there (a one-time enlistment ticket, a feature activated by its secret). The
   deployment, not the code, chooses it: the rules of a handle apply (`"<path>:$SECRET?"` in the flattened configuration,
   projected and burnt as is).
 
-The builder checks them (`AppBuilderConfiguration.CheckSecrets`) with the restrictions.
+The Builder checks them (`AppContextConfiguration.CheckSecrets`) with the restrictions.
 
 ## The contributors' contract
 
@@ -269,13 +289,13 @@ The engines deduce the engine configuration from the `ckonf.json`: they declare 
 
 - `IAppBuilderContributor.ProjectFromCentral( monitor, context )` is called first, when the repository has a central
   configuration: the `CentralProjectionContext` gives the `CentralConfiguration` (its `Configuration` section, its
-  `Builders` and their `Apps`) and the Apps of the builder being projected, whose JSON (`CentralProjectedApp.Node`) the
+  `Domain`, its `AppContexts` and their `Apps`) and the Apps of the AppContext being projected, whose JSON (`CentralProjectedApp.Node`) the
   contributor completes. Does nothing by default.
 
 Then it receives an `AppBuilderContext`:
 
 - `IAppBuilderContributor.Contribute( monitor, context )` reads the `context.Apps` (an `AppConfiguration`: its name,
-  its projects, its `Configuration` section, its `Aspects`, its engine `BinPathConfiguration`) and the Builder
+  its projects, its `Configuration` section, its `Aspects`, its engine `BinPathConfiguration`) and the AppContext
   `context.Aspects`, and completes the `context.EngineConfiguration` (what it deduces from the Apps; the aspects have
   been applied before).
   - `AppConfiguration.AddCompileKey( path )` keeps a key out of the projection.
@@ -289,4 +309,4 @@ Then it receives an `AppBuilderContext`:
 - `IAppBuilderContributor.OnContributed( monitor, context )` is called once all of them have contributed: a
   contributor can check what the others did.
 
-The builder that finds the contributors and runs them is a consumer of this model (for how it runs them, see [CK.AppBuilder](https://github.com/signature-opensource/CK-AppBuilder/blob/stable/CK.AppBuilder/README.md)).
+The Builder that finds the contributors and runs them is a consumer of this model (for how it runs them, see [CK.AppBuilder](https://github.com/signature-opensource/CK-AppBuilder/blob/stable/CK.AppBuilder/README.md)).

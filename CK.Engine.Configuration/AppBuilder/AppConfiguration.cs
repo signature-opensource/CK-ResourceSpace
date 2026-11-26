@@ -129,7 +129,7 @@ public sealed class AppConfiguration
     /// <summary>
     /// Declares that the values at a path are secrets (see <see cref="ConfigurationSecret"/>): their configuration should
     /// be a handle. For the readers that read their keys by hand; a configurable type declares its secrets with
-    /// <see cref="ConfigurationSecretAttribute"/>. See <see cref="AppBuilderConfiguration.CheckSecrets"/>.
+    /// <see cref="ConfigurationSecretAttribute"/>. See <see cref="AppContextConfiguration.CheckSecrets"/>.
     /// </summary>
     /// <param name="path">
     /// The path of the values, relative to <see cref="Configuration"/> (with ':' separators): it may contain the patterns

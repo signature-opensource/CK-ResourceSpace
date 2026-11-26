@@ -5,7 +5,7 @@ using System.Reflection;
 
 namespace CK.Setup;
 
-public sealed partial class AppBuilderConfiguration
+public sealed partial class AppContextConfiguration
 {
     /// <summary>
     /// Collects the keys per deployment of an App (see <see cref="CentralDeployment"/>), as patterns relative to the App:
@@ -98,7 +98,7 @@ public sealed partial class AppBuilderConfiguration
 
 /// <summary>
 /// A declaration of values per deployment by a configurable type of an App (a <c>[ConfigurationPerDeployment]</c>):
-/// the builder gives them to <see cref="AppBuilderConfiguration.CollectPerDeploymentKeys"/>.
+/// the builder gives them to <see cref="AppContextConfiguration.CollectPerDeploymentKeys"/>.
 /// </summary>
 /// <param name="TypeName">The name of the type that declares it (for the messages).</param>
 /// <param name="Sections">

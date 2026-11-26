@@ -6,11 +6,11 @@ using System.Linq;
 namespace CK.Setup;
 
 /// <summary>
-/// The "Aspects" of the "ckonf.json" of a builder: the Builder aspects (at its root, <see cref="AppBuilderContext.Aspects"/>)
+/// The "Aspects" of the "ckonf.json" of a builder: the AppContext aspects (at its root, <see cref="AppBuilderContext.Aspects"/>)
 /// or the aspects of one App (<see cref="AppConfiguration.Aspects"/>). They are compile time: they are never projected as
 /// such in the hosts' "appsettings.json".
 /// <para>
-/// An aspect is a type of a model (<see cref="AppBuilderAspectAttribute"/>, <see cref="AppAspectAttribute"/>): the builder
+/// An aspect is a type of a model (<see cref="AppContextAspectAttribute"/>, <see cref="AppAspectAttribute"/>): the builder
 /// reads its section (<see cref="TryGetAspect(string)"/>) when it finds the aspect in the type sets of the Apps; then an
 /// aspect key that names no aspect is an error ("no package handles the aspect 'X'"), before the contributors run.
 /// </para>

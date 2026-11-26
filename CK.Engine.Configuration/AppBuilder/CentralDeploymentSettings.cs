@@ -14,14 +14,14 @@ namespace CK.Setup;
 /// root key of the central configuration (the defaults of every deployment) or of an overlay (merged like the rest):
 /// <code>
 /// "Deployment": {
-///   // The builders to deploy (their paths in "Builders"): all by default.
-///   "Builders": [ "Front/Auth3.Front.Builder", "Admin/Auth3.Admin.Builder" ],
+///   // The AppContexts to deploy (their names): all by default.
+///   "AppContexts": [ "Front", "Admin" ],
 ///   // One asset for the deployment ("Production.zip") instead of one per App ("Production-Auth3.Front.zip"...).
 ///   "SingleZipAsset": false,
 ///   // The MSBuild properties of the publication of every host, applied as-is ("dotnet publish" defaults otherwise).
 ///   "Publish": { "RuntimeIdentifier": "linux-x64", "SelfContained": true, "PublishSingleFile": true },
 ///   // The ones of an App (by its name), over them: an empty string resets a property (the SDK default).
-///   "Apps": { "Auth3.Worker": { "Publish": { "PublishSingleFile": "", "InvariantGlobalization": true } } }
+///   "Apps": { "$Worker": { "Publish": { "PublishSingleFile": "", "InvariantGlobalization": true } } }
 /// }
 /// </code>
 /// The publication properties are not modeled: only their shape is checked (an MSBuild property name, a string, a
@@ -33,19 +33,19 @@ public sealed partial class CentralDeploymentSettings
     readonly IReadOnlyDictionary<string, string> _publish;
     readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> _apps;
 
-    CentralDeploymentSettings( IReadOnlyList<string>? builders,
+    CentralDeploymentSettings( IReadOnlyList<string>? appContexts,
                                bool singleZipAsset,
                                IReadOnlyDictionary<string, string> publish,
                                IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> apps )
     {
-        Builders = builders;
+        AppContexts = appContexts;
         SingleZipAsset = singleZipAsset;
         _publish = publish;
         _apps = apps;
     }
 
     /// <summary>
-    /// The default settings: all the builders, the defaults of "dotnet publish".
+    /// The default settings: all the AppContexts, the defaults of "dotnet publish".
     /// </summary>
     public static readonly CentralDeploymentSettings Default = new( null,
                                                                     false,
@@ -53,9 +53,9 @@ public sealed partial class CentralDeploymentSettings
                                                                     new Dictionary<string, IReadOnlyDictionary<string, string>>() );
 
     /// <summary>
-    /// Gets the paths of the builders to deploy, null for all of them.
+    /// Gets the names of the AppContexts to deploy, null for all of them.
     /// </summary>
-    public IReadOnlyList<string>? Builders { get; }
+    public IReadOnlyList<string>? AppContexts { get; }
 
     /// <summary>
     /// Gets whether the deployment is one asset ("Production.zip": a folder per App in it) instead of one per App
@@ -103,35 +103,35 @@ public sealed partial class CentralDeploymentSettings
         var key = CentralDeployment.SettingsKey;
         if( node is not JsonObject o )
         {
-            monitor.Error( $"Invalid \"{key}\" of {source}: an object is expected (\"Builders\", \"SingleZipAsset\", \"Publish\", \"Apps\")." );
+            monitor.Error( $"Invalid \"{key}\" of {source}: an object is expected (\"AppContexts\", \"SingleZipAsset\", \"Publish\", \"Apps\")." );
             return null;
         }
         bool success = true;
-        List<string>? builders = null;
+        List<string>? appContexts = null;
         bool singleZipAsset = false;
         var publish = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase );
         var apps = new Dictionary<string, IReadOnlyDictionary<string, string>>( StringComparer.OrdinalIgnoreCase );
         foreach( var (k, value) in o )
         {
-            if( k.Equals( "Builders", StringComparison.OrdinalIgnoreCase ) )
+            if( k.Equals( CentralConfiguration.AppContextsKey, StringComparison.OrdinalIgnoreCase ) )
             {
                 if( value is not JsonArray a )
                 {
-                    monitor.Error( $"Invalid \"{key}:Builders\" of {source}: an array of the paths of the builders is expected." );
+                    monitor.Error( $"Invalid \"{key}:{CentralConfiguration.AppContextsKey}\" of {source}: an array of the names of the AppContexts is expected." );
                     success = false;
                     continue;
                 }
-                builders = new List<string>();
+                appContexts = new List<string>();
                 foreach( var item in a )
                 {
-                    var path = item is JsonValue v && v.TryGetValue<string>( out var s ) ? s.Replace( '\\', '/' ).Trim().Trim( '/' ) : null;
-                    var b = path != null ? configuration.Builders.FirstOrDefault( b => b.Path.Equals( path, StringComparison.OrdinalIgnoreCase ) ) : null;
-                    if( b == null )
+                    var name = item is JsonValue v && v.TryGetValue<string>( out var s ) ? s.Trim() : null;
+                    var c = name != null ? configuration.FindAppContext( name ) : null;
+                    if( c == null )
                     {
-                        monitor.Error( $"Invalid builder '{item?.ToJsonString()}' in \"{key}:Builders\" of {source}: the builders are '{configuration.Builders.Select( b => b.Path ).Concatenate( "', '" )}'." );
+                        monitor.Error( $"Invalid AppContext '{item?.ToJsonString()}' in \"{key}:{CentralConfiguration.AppContextsKey}\" of {source}: the AppContexts are '{configuration.AppContexts.Select( c => c.Name ).Concatenate( "', '" )}'." );
                         success = false;
                     }
-                    else if( !builders.Contains( b.Path ) ) builders.Add( b.Path );
+                    else if( !appContexts.Contains( c.Name ) ) appContexts.Add( c.Name );
                 }
             }
             else if( k.Equals( "SingleZipAsset", StringComparison.OrdinalIgnoreCase ) )
@@ -178,11 +178,11 @@ public sealed partial class CentralDeploymentSettings
             }
             else
             {
-                monitor.Error( $"Unknown key \"{key}:{k}\" of {source}: \"Builders\", \"SingleZipAsset\", \"Publish\" and \"Apps\" are expected." );
+                monitor.Error( $"Unknown key \"{key}:{k}\" of {source}: \"AppContexts\", \"SingleZipAsset\", \"Publish\" and \"Apps\" are expected." );
                 success = false;
             }
         }
-        return success ? new CentralDeploymentSettings( builders, singleZipAsset, publish, apps ) : null;
+        return success ? new CentralDeploymentSettings( appContexts, singleZipAsset, publish, apps ) : null;
 
         static Dictionary<string, string>? ReadProperties( IActivityMonitor monitor, JsonNode? node, string source, ref bool success )
         {

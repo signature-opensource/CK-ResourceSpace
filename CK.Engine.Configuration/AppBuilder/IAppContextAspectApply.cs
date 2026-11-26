@@ -4,10 +4,10 @@ using System.Collections.Generic;
 namespace CK.Setup;
 
 /// <summary>
-/// What a Builder aspect does: an <see cref="IAppBuilderAspect"/> (declared by CK.AppBuilder.Abstractions) implements it.
-/// The App builder reports an error for a Builder aspect that doesn't.
+/// What an AppContext aspect does: an <see cref="IAppContextAspect"/> (declared by CK.AppBuilder.Abstractions) implements it.
+/// The App builder reports an error for an AppContext aspect that doesn't.
 /// </summary>
-public interface IAppBuilderAspectApply : IAppBuilderAspect
+public interface IAppContextAspectApply : IAppContextAspect
 {
     /// <summary>
     /// Applies this aspect: typically ensures and configures its engine aspect configurations in the

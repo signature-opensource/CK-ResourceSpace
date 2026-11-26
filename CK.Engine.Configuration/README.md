@@ -15,6 +15,6 @@ depends on no engine: the engine, the builder and the contributors of the packag
 
 ## The App builder model
 
-`AppBuilderConfiguration` reads the `ckonf.json` of a builder (its Apps, each one an `AppConfiguration`) and the
+`AppContextConfiguration` reads the `ckonf.json` of a builder (its Apps, each one an `AppConfiguration`) and the
 contributors of the packages (`IAppBuilderContributor`) complete the engine configuration: see
 [the App builder model](AppBuilder/README.md).

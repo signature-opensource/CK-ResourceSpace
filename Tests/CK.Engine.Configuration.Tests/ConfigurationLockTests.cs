@@ -28,10 +28,10 @@ public class ConfigurationLockTests
         return builder;
     }
 
-    static AppBuilderConfiguration Load( string ckonf )
+    static AppContextConfiguration Load( string ckonf )
     {
         var builder = CreateSolution( ckonf, "Backs" );
-        return AppBuilderConfiguration.Load( TestHelper.Monitor, builder, "bin/Debug/net10.0", null, out _ ).ShouldNotBeNull();
+        return AppContextConfiguration.Load( TestHelper.Monitor, builder, "bin/Debug/net10.0", null, out _ ).ShouldNotBeNull();
     }
 
     // What the AppIdentity contributor declares: the party keys are read at start, projected in "CK-AppIdentity"; the

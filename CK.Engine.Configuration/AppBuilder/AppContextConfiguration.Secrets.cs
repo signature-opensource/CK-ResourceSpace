@@ -6,10 +6,10 @@ using System.Linq;
 
 namespace CK.Setup;
 
-public sealed partial class AppBuilderConfiguration
+public sealed partial class AppContextConfiguration
 {
     /// <summary>
-    /// Checks the secrets (see <see cref="ConfigurationSecret"/>) of the Apps and of the Builder aspects: a handle
+    /// Checks the secrets (see <see cref="ConfigurationSecret"/>) of the Apps and of the AppContext aspects: a handle
     /// (<c>{ "$SECRET": "&lt;Name&gt;" }</c>) must be alone in its object and have a valid name; a plain value where a
     /// secret is declared (<see cref="AppConfiguration.AddSecretKey(string)"/>, <see cref="ConfigurationSecretAttribute"/>)
     /// is reported: the development configuration accepts it, a handle keeps it out of the files. The name of a handle of
@@ -218,7 +218,7 @@ public sealed partial class AppBuilderConfiguration
 
 /// <summary>
 /// A secret declared by a configurable type of an App (<see cref="ConfigurationSecretAttribute"/>): the builder gives them
-/// to <see cref="AppBuilderConfiguration.CheckSecrets"/>.
+/// to <see cref="AppContextConfiguration.CheckSecrets"/>.
 /// </summary>
 /// <param name="TypeName">The name of the type that declares it (for the messages).</param>
 /// <param name="Sections">

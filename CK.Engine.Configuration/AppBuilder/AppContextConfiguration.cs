@@ -11,15 +11,16 @@ using System.Xml.Linq;
 namespace CK.Setup;
 
 /// <summary>
-/// The configuration of a builder, read from the "ckonf.json" of its "XXX.Builder" project: its App ("App", named after
-/// the builder by default) or its Apps ("Apps", an array of named Apps), and its Builder aspects (the ones that apply to the whole engine run). It is the future root of the engine: the engine
-/// still receives an <see cref="EngineConfiguration"/>, that this projects (a BinPath per App, the root of an optional
-/// "CKSetup.xml" for the aspects that are not deduced yet).
+/// The configuration of an AppContext, read from the "ckonf.json" of its Builder (the "{Name}.Builder" project): its App
+/// ("App", the party "$&lt;AppContext name&gt;" by default) or its Apps ("Apps", an array of Apps named after their party:
+/// "$Jobs"), and its AppContext aspects (the ones that apply to the whole engine run). It is the future root of the
+/// engine: the engine still receives an <see cref="EngineConfiguration"/>, that this projects (a BinPath per App, named
+/// after its ".App" project, the root of an optional "CKSetup.xml" for the aspects that are not deduced yet).
 /// <para>
-/// The paths are taken in control, top-down: everything is relative to the "ckonf.json" folder; an App "X" is the
-/// "../X.App" project (its bin folder is the one of the builder: "bin/{Configuration}/{TargetFramework}") and the
-/// "../X.Host" project ("AppProject" and "HostProject" depart from this convention). A path that leaves the solution's
-/// folder is an error.
+/// The paths are taken in control, top-down: everything is relative to the "ckonf.json" folder; an App "$X" is the
+/// "../X.App" project (its bin folder is the one of the Builder: "bin/{Configuration}/{TargetFramework}") and the
+/// "../X.Host" project ("AppProject" and "HostProject" depart from this convention: the projection of the central
+/// configuration always writes them). A path that leaves the solution's folder is an error.
 /// </para>
 /// <para>
 /// The "appsettings.json" of each host is a projection of its App: its content without its compile time keys, the keys
@@ -27,7 +28,7 @@ namespace CK.Setup;
 /// in it.
 /// </para>
 /// </summary>
-public sealed partial class AppBuilderConfiguration
+public sealed partial class AppContextConfiguration
 {
     /// <summary>
     /// The configuration file name, in the "XXX.Builder" project.
@@ -51,7 +52,7 @@ public sealed partial class AppBuilderConfiguration
     readonly AppAspects _aspects;
     readonly IReadOnlyList<ConfigurationLockEntry> _builderLocks;
 
-    AppBuilderConfiguration( NormalizedPath builderFolder,
+    AppContextConfiguration( NormalizedPath builderFolder,
                              IReadOnlyList<JsonObject> appNodes,
                              bool projectCompileKeys,
                              IReadOnlyList<AppConfiguration> apps,
@@ -72,12 +73,12 @@ public sealed partial class AppBuilderConfiguration
     public IReadOnlyList<AppConfiguration> Apps => _apps;
 
     /// <summary>
-    /// Gets the Builder aspects (the "Aspects" at the root).
+    /// Gets the AppContext aspects (the "Aspects" at the root).
     /// </summary>
     public AppAspects Aspects => _aspects;
 
     /// <summary>
-    /// Reads the "ckonf.json" of a builder and creates the engine configuration.
+    /// Reads the "ckonf.json" of a Builder and creates the engine configuration.
     /// </summary>
     /// <param name="monitor">The monitor to use.</param>
     /// <param name="builderFolder">The "XXX.Builder" project folder (that contains the "ckonf.json").</param>
@@ -85,7 +86,7 @@ public sealed partial class AppBuilderConfiguration
     /// <param name="ckSetup">The optional "CKSetup.xml" root: its aspects and its global options. It must not define BinPaths.</param>
     /// <param name="engineConfiguration">The engine configuration on success.</param>
     /// <returns>The builder configuration, or null on error (errors are logged).</returns>
-    public static AppBuilderConfiguration? Load( IActivityMonitor monitor,
+    public static AppContextConfiguration? Load( IActivityMonitor monitor,
                                                  NormalizedPath builderFolder,
                                                  NormalizedPath msBuildOutputPath,
                                                  XElement? ckSetup,
@@ -123,7 +124,7 @@ public sealed partial class AppBuilderConfiguration
             monitor.Error( $"\"Aspects\" in '{file}' must be an object: the aspects are keyed by their name." );
             success = false;
         }
-        var declaredApps = CkonfReader.ReadApps( monitor, file, CkonfReader.DefaultAppName( builderFolder ), root, section );
+        var declaredApps = CkonfReader.ReadApps( monitor, file, CkonfReader.DefaultAppName( CkonfReader.AppContextNameOf( builderFolder ) ), root, section );
         if( declaredApps == null ) return null;
         if( ckSetup != null && ckSetup.Elements( EngineConfiguration.xBinPaths ).Elements().Any() )
         {
@@ -133,7 +134,7 @@ public sealed partial class AppBuilderConfiguration
         if( !success ) return null;
 
         // The Apps, sorted by name (their order means nothing: the engine's FirstBinPath is the first name).
-        var apps = new List<(string Name, NormalizedPath App, NormalizedPath Host, ImmutableConfigurationSection Section, JsonObject Node)>();
+        var apps = new List<(string Name, string BinPathName, NormalizedPath App, NormalizedPath Host, ImmutableConfigurationSection Section, JsonObject Node)>();
         var xBinPaths = new XElement( EngineConfiguration.xBinPaths );
         foreach( var (name, a, node) in declaredApps.OrderBy( a => a.Name, StringComparer.OrdinalIgnoreCase ) )
         {
@@ -143,21 +144,24 @@ public sealed partial class AppBuilderConfiguration
                 success = false;
                 continue;
             }
-            var appProject = ResolveProject( monitor, builderFolder, solutionFolder, name, a, "AppProject", $"{name}.App" );
-            var hostProject = ResolveProject( monitor, builderFolder, solutionFolder, name, a, "HostProject", $"{name}.Host" );
+            var bare = CkonfReader.BareProjectName( name );
+            var appProject = ResolveProject( monitor, builderFolder, solutionFolder, name, a, "AppProject", $"{bare}.App" );
+            var hostProject = ResolveProject( monitor, builderFolder, solutionFolder, name, a, "HostProject", $"{bare}.Host" );
             if( appProject.IsEmptyPath || hostProject.IsEmptyPath )
             {
                 success = false;
                 continue;
             }
-            var x = CreateBinPathXml( monitor, name, a, appProject.Combine( msBuildOutputPath ), hostProject );
+            // The BinPath is named after the ".App" project ("Auth3.Jobs"): an App's name has a '$'.
+            var binPathName = appProject.LastPart.EndsWith( ".App", StringComparison.OrdinalIgnoreCase ) ? appProject.LastPart[..^4] : appProject.LastPart;
+            var x = CreateBinPathXml( monitor, binPathName, a, appProject.Combine( msBuildOutputPath ), hostProject );
             if( x == null )
             {
                 success = false;
                 continue;
             }
             xBinPaths.Add( x );
-            apps.Add( (name, appProject, hostProject, a, node) );
+            apps.Add( (name, binPathName, appProject, hostProject, a, node) );
         }
         if( !success ) return null;
 
@@ -175,9 +179,9 @@ public sealed partial class AppBuilderConfiguration
             return null;
         }
         var e = engineConfiguration;
-        var appConfigurations = apps.Select( a => new AppConfiguration( a.Name, a.App, a.Host, a.Section, e.FindRequiredBinPath( a.Name ) ) )
+        var appConfigurations = apps.Select( a => new AppConfiguration( a.Name, a.App, a.Host, a.Section, e.FindRequiredBinPath( a.BinPathName ) ) )
                                     .ToArray();
-        // The "$LOCK" of an App are its own; the ones of the Builder aspects lock what they project in the hosts.
+        // The "$LOCK" of an App are its own; the ones of the AppContext aspects lock what they project in the hosts.
         var builderLocks = new List<ConfigurationLockEntry>();
         var builderAspects = $"{section.Path}:Aspects";
         foreach( var l in locks )
@@ -190,19 +194,19 @@ public sealed partial class AppBuilderConfiguration
             }
             else
             {
-                monitor.Error( $"{l} is outside the Apps and the Builder aspects: a \"$LOCK\" restricts the values of an App or of a Builder aspect." );
+                monitor.Error( $"{l} is outside the Apps and the AppContext aspects: a \"$LOCK\" restricts the values of an App or of an AppContext aspect." );
                 success = false;
             }
         }
         if( !success ) return null;
-        return new AppBuilderConfiguration( builderFolder, apps.Select( a => a.Node ).ToArray(), projectCompileKeys, appConfigurations, new AppAspects( aspectsSection ), builderLocks );
+        return new AppContextConfiguration( builderFolder, apps.Select( a => a.Node ).ToArray(), projectCompileKeys, appConfigurations, new AppAspects( aspectsSection ), builderLocks );
 
         static bool IsUnder( string path, string prefix ) => path.Equals( prefix, StringComparison.OrdinalIgnoreCase )
                                                               || path.StartsWith( prefix + ":", StringComparison.OrdinalIgnoreCase );
     }
 
     /// <summary>
-    /// Checks that every aspect key (of the builder and of each App) names an aspect that the builder applied.
+    /// Checks that every aspect key (of the AppContext and of each App) names an aspect that the Builder applied.
     /// </summary>
     /// <param name="monitor">The monitor to use.</param>
     /// <returns>True on success, false on error.</returns>
@@ -211,7 +215,7 @@ public sealed partial class AppBuilderConfiguration
         bool success = true;
         foreach( var a in _aspects.UnhandledAspects.Concat( _apps.SelectMany( a => a.Aspects.UnhandledAspects ) ) )
         {
-            monitor.Error( $"No package handles the aspect \"{a.Path}\" (a missing package reference in the builder?)." );
+            monitor.Error( $"No package handles the aspect \"{a.Path}\" (a missing package reference in the Builder?)." );
             success = false;
         }
         return success;

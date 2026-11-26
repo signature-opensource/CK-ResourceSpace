@@ -5,10 +5,10 @@ using System.Linq;
 
 namespace CK.Setup;
 
-public sealed partial class AppBuilderConfiguration
+public sealed partial class AppContextConfiguration
 {
     /// <summary>
-    /// Gets the entries of the <c>"$LOCK"</c> of the Builder aspects (in the "Aspects" at the root): they lock the values
+    /// Gets the entries of the <c>"$LOCK"</c> of the AppContext aspects (in the "Aspects" at the root): they lock the values
     /// that the aspects project in the hosts (see <see cref="AppConfiguration.ProjectValue(string, string, string)"/>).
     /// </summary>
     public IReadOnlyList<ConfigurationLockEntry> BuilderLocks => _builderLocks;
@@ -38,7 +38,7 @@ public sealed partial class AppBuilderConfiguration
         }
         foreach( var l in _builderLocks.Where( l => !used.Contains( l ) ) )
         {
-            monitor.Warn( $"{l} locks no value that the Builder aspects project in the hosts." );
+            monitor.Warn( $"{l} locks no value that the AppContext aspects project in the hosts." );
         }
         return success;
     }
@@ -49,7 +49,7 @@ public sealed partial class AppBuilderConfiguration
     /// </summary>
     /// <param name="monitor">The monitor to use.</param>
     /// <param name="app">The App.</param>
-    /// <param name="builderLocks">The entries of the "$LOCK" of the Builder aspects.</param>
+    /// <param name="builderLocks">The entries of the "$LOCK" of the AppContext aspects.</param>
     /// <param name="packageLocks">The restrictions declared by the configurable types of the App.</param>
     /// <param name="usedBuilderLocks">Collects the entries of <paramref name="builderLocks"/> that locked a value.</param>
     /// <returns>True on success, false on error (errors are logged).</returns>

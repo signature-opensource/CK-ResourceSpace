@@ -18,8 +18,9 @@ public class CentralDeploymentTests
         {
           "Domain": "Sample/Auth3",
           "Defaults": { "App": { "Logging": { "LogLevel": { "Default": "Warning" } } } },
-          "Builders": {
-            "Front/Front.Builder": {
+          "AppContexts": {
+            "Front": {
+              "RootPath": "Front",
               "App": {
                 "Local": { "HttpEndpoint": { "Urls": "http://localhost:5300" } },
                 "Demo": { "Password": "pass" },
@@ -68,9 +69,9 @@ public class CentralDeploymentTests
     {
         var central = Create( _central );
         central.PerDeploymentMarkers.Select( m => (m.ObjectPath, m.Pattern) )
-               .ShouldBe( [("Builders:Front/Front.Builder:App", "Demo"), ("", "Links:[*]:Link:AutoTrustKey")], ignoreOrder: true );
+               .ShouldBe( [("AppContexts:Front:App", "Demo"), ("", "Links:[*]:Link:AutoTrustKey")], ignoreOrder: true );
         central.Configuration.AsEnumerable().ShouldNotContain( kv => kv.Key.Contains( "$PER_DEPLOYMENT" ) );
-        central.Builders.Single().Configuration["App:Demo:Password"].ShouldBe( "pass" );
+        central.AppContexts.Single().Configuration["App:Demo:Password"].ShouldBe( "pass" );
     }
 
     [Test]
@@ -79,12 +80,12 @@ public class CentralDeploymentTests
         var central = Create( _central,
                               ("#Production", """
                                     {
-                                      "Builders": { "Front/Front.Builder": { "App": { "Local": { "HttpEndpoint": { "Urls": "https://*:443" } }, "Demo": null } } },
+                                      "AppContexts": { "Front": { "App": { "Local": { "HttpEndpoint": { "Urls": "https://*:443" } }, "Demo": null } } },
                                       "Links": [ { "From": "$Front", "To": "$Auth3", "Link": { "Address": "tcp:auth3:37300", "AutoTrustKey": "Never" } } ]
                                     }
                                     """),
                               ("#Staging", """{ "$BASE": "#Production", "Defaults": { "App": { "Logging": null } } }"""),
-                              ("Paris/Shop/#Production", """{ "Builders": { "Front/Front.Builder": { "App": { "Demo": { "Password": "other" } } } } }"""),
+                              ("Paris/Shop/#Production", """{ "AppContexts": { "Front": { "App": { "Demo": { "Password": "other" } } } } }"""),
                               ("Assets/#Production", null!),
                               ("Docs", null!),
                               (".build/Production/#Ignored", null!) );
@@ -94,8 +95,8 @@ public class CentralDeploymentTests
         var production = deployments[0];
         production.Configuration.Configuration["Domain"].ShouldBe( "Sample/Auth3" );
         production.Configuration.Configuration["Environment"].ShouldBe( "#Production" );
-        production.Configuration.Configuration["Builders:Front/Front.Builder:App:Local:HttpEndpoint:Urls"].ShouldBe( "https://*:443" );
-        production.Configuration.Configuration.TryGetSection( "Builders:Front/Front.Builder:App:Demo" ).ShouldBeNull();
+        production.Configuration.Configuration["AppContexts:Front:App:Local:HttpEndpoint:Urls"].ShouldBe( "https://*:443" );
+        production.Configuration.Configuration.TryGetSection( "AppContexts:Front:App:Demo" ).ShouldBeNull();
         production.Configuration.Configuration["Defaults:App:Logging:LogLevel:Default"].ShouldBe( "Warning" );
 
         var staging = deployments[1];
@@ -106,8 +107,8 @@ public class CentralDeploymentTests
 
         var paris = deployments[2];
         paris.Configuration.Configuration["Domain"].ShouldBe( "Paris/Shop" );
-        paris.Configuration.Configuration["Builders:Front/Front.Builder:App:Demo:Password"].ShouldBe( "other" );
-        paris.Configuration.Configuration["Builders:Front/Front.Builder:App:Local:HttpEndpoint:Urls"].ShouldBe( "http://localhost:5300" );
+        paris.Configuration.Configuration["AppContexts:Front:App:Demo:Password"].ShouldBe( "other" );
+        paris.Configuration.Configuration["AppContexts:Front:App:Local:HttpEndpoint:Urls"].ShouldBe( "http://localhost:5300" );
 
         // The merged file is written when it changes.
         staging.WriteMergedFile( TestHelper.Monitor, central ).ShouldBeTrue();
@@ -127,7 +128,7 @@ public class CentralDeploymentTests
         var central = Create( _central,
                               ("#Production", """
                                     {
-                                      "Builders": { "Front/Front.Builder": { "App": { "Local": { "HttpEndpoint": { "Urls": "https://*:443" } }, "Demo": null } } },
+                                      "AppContexts": { "Front": { "App": { "Local": { "HttpEndpoint": { "Urls": "https://*:443" } }, "Demo": null } } },
                                       "Links": [ { "From": "$Front", "To": "$Auth3", "Link": { "Address": "tcp:auth3:37300", "AutoTrustKey": "Never" } } ]
                                     }
                                     """),
@@ -135,27 +136,26 @@ public class CentralDeploymentTests
         var deployments = Load( central );
         var appKeys = new Dictionary<string, IReadOnlyList<(string, string)>>
         {
-            { "Front", [("Local:HttpEndpoint:Urls", "[ConfigurationPerDeployment( \"Party:Urls\" )] of 'HttpEndpointFeatureDriver'"), ("Logging:LogLevel:Default", "a test")] }
+            { "$Front", [("Local:HttpEndpoint:Urls", "[ConfigurationPerDeployment( \"Party:Urls\" )] of 'HttpEndpointFeatureDriver'"), ("Logging:LogLevel:Default", "a test")] }
         };
-        var builder = central.RootFolder.Combine( "Front/Front.Builder" );
         using( TestHelper.Monitor.CollectTexts( out var texts ) )
         {
             // The "Defaults:App" value is inherited by the App: not written by #Production.
-            deployments[0].CheckPerDeployment( TestHelper.Monitor, central, builder, appKeys ).ShouldBeFalse();
+            deployments[0].CheckPerDeployment( TestHelper.Monitor, central, "Front", appKeys ).ShouldBeFalse();
             texts.Count( t => t.Contains( "inherits" ) ).ShouldBe( 1 );
             texts.ShouldContain( t => t.Contains( "The deployment '#Production' inherits \"Defaults:App:Logging:LogLevel:Default\" (a test)" ) );
         }
         using( TestHelper.Monitor.CollectTexts( out var texts ) )
         {
             // #Staging writes nothing: everything it inherits from #Production is an error.
-            deployments[1].CheckPerDeployment( TestHelper.Monitor, central, builder, appKeys ).ShouldBeFalse();
+            deployments[1].CheckPerDeployment( TestHelper.Monitor, central, "Front", appKeys ).ShouldBeFalse();
             texts.ShouldContain( t => t.Contains( "inherits \"Links:0:Link:AutoTrustKey\" (\"$PER_DEPLOYMENT\" of" ) );
-            texts.ShouldContain( t => t.Contains( "inherits \"Builders:Front/Front.Builder:App:Local:HttpEndpoint:Urls\" ([ConfigurationPerDeployment" ) );
+            texts.ShouldContain( t => t.Contains( "inherits \"AppContexts:Front:App:Local:HttpEndpoint:Urls\" ([ConfigurationPerDeployment" ) );
             // "Demo" is removed by #Production: nothing to inherit.
             texts.ShouldNotContain( t => t.Contains( "App:Demo" ) );
         }
         // Without the "Defaults:App" key, #Production is fine: its array of links replaces the central one whole.
-        deployments[0].CheckPerDeployment( TestHelper.Monitor, central, builder, new Dictionary<string, IReadOnlyList<(string, string)>> { { "Front", [("Local:HttpEndpoint:Urls", "x")] } } )
+        deployments[0].CheckPerDeployment( TestHelper.Monitor, central, "Front", new Dictionary<string, IReadOnlyList<(string, string)>> { { "$Front", [("Local:HttpEndpoint:Urls", "x")] } } )
                       .ShouldBeTrue();
     }
 
@@ -164,7 +164,7 @@ public class CentralDeploymentTests
     [TestCase( """{ "$BASE": "#Unknown" }""", "there is no such deployment" )]
     [TestCase( """{ "$BASE": 3 }""", "Invalid \"$BASE\"" )]
     [TestCase( """{ "$PER_DEPLOYMENT": "Demo" }""", "an array of patterns" )]
-    [TestCase( """{ "Builders": null }""", "must define \"Builders\"" )]
+    [TestCase( """{ "AppContexts": null }""", "must define \"AppContexts\"" )]
     public void invalid_overlays( string overlay, string message )
     {
         ShouldFail( Create( _central, ("#Production", overlay) ), message );
@@ -221,23 +221,23 @@ public class CentralDeploymentTests
         var merged = (System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse( """
             {
               "Defaults": { "App": { "Port": 1 } },
-              "Builders": { "B": { "App": { "Local": { "Urls": "x", "Other": [ 1, 2 ] } } } },
+              "AppContexts": { "B": { "App": { "Local": { "Urls": "x", "Other": [ 1, 2 ] } } } },
               "Demo": { "A": 1, "B": 2 }
             }
             """ )!;
-        var overlay = (System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse( """{ "Builders": { "B": { "App": { "Local": { "Other": [ 3 ] } } } }, "Demo": { "A": 3 } }""" )!;
+        var overlay = (System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse( """{ "AppContexts": { "B": { "App": { "Local": { "Other": [ 3 ] } } } }, "Demo": { "A": 3 } }""" )!;
         var inherited = CentralDeployment.FindInheritedValues( merged,
                                                                overlay,
                                                                [
                                                                    new PerDeploymentPattern( "", "Demo", "marker" ),
-                                                                   new PerDeploymentPattern( "Builders:B:App", "Local:*", "app", IsApp: true ),
-                                                                   new PerDeploymentPattern( "Builders:B:App", "Port", "port", IsApp: true ),
+                                                                   new PerDeploymentPattern( "AppContexts:B:App", "Local:*", "app", IsApp: true ),
+                                                                   new PerDeploymentPattern( "AppContexts:B:App", "Port", "port", IsApp: true ),
                                                                    new PerDeploymentPattern( "", "Demo:B", "again" ),
                                                                    new PerDeploymentPattern( "", "[", "invalid" )
                                                                ],
                                                                out var invalid );
         inherited.ShouldBe( [new InheritedPerDeploymentValue( "Demo:B", "marker" ),
-                             new InheritedPerDeploymentValue( "Builders:B:App:Local:Urls", "app" ),
+                             new InheritedPerDeploymentValue( "AppContexts:B:App:Local:Urls", "app" ),
                              new InheritedPerDeploymentValue( "Defaults:App:Port", "port" )] );
         invalid.Count.ShouldBe( 1 );
         invalid[0].ShouldContain( "'[' (invalid)" );
@@ -251,13 +251,13 @@ public class CentralDeploymentTests
         app.DeclareAnchor( "Local", ["Party"], ["Defaults"] );
         app.DeclareAnchor( "Parties:0", ["Party", "Remote"], ["Defaults"] );
         app.AddPerDeploymentKey( "StoreRootPath" );
-        AppBuilderConfiguration.CollectPerDeploymentKeys( TestHelper.Monitor,
+        AppContextConfiguration.CollectPerDeploymentKeys( TestHelper.Monitor,
                                                           app,
                                                           [new PackageConfigurationPerDeployment( "HttpEndpointFeatureDriver", ["HttpEndpoint"], "Party:Urls" )],
                                                           [],
                                                           out var keys ).ShouldBeTrue();
         keys.Select( k => k.Pattern ).ShouldBe( ["StoreRootPath", "Local:HttpEndpoint:Urls", "Defaults:HttpEndpoint:Urls", "Parties:[*]:HttpEndpoint:Urls"] );
-        AppBuilderConfiguration.CollectPerDeploymentKeys( TestHelper.Monitor, app, [new PackageConfigurationPerDeployment( "X", ["X"], "Urls" )], [], out _ )
+        AppContextConfiguration.CollectPerDeploymentKeys( TestHelper.Monitor, app, [new PackageConfigurationPerDeployment( "X", ["X"], "Urls" )], [], out _ )
                                .ShouldBeFalse();
     }
 
@@ -271,7 +271,7 @@ public class CentralDeploymentTests
         app.DeclareAnchor( "Parties:1", ["Party", "Remote", "RemoteTemplate"] );
         app.AddPerDeploymentPartyKey( "Remote", "Address" );
         app.AddPerDeploymentPartyKey( "remote", "address" );
-        AppBuilderConfiguration.CollectPerDeploymentKeys( TestHelper.Monitor, app, [], [], out var keys ).ShouldBeTrue();
+        AppContextConfiguration.CollectPerDeploymentKeys( TestHelper.Monitor, app, [], [], out var keys ).ShouldBeTrue();
         keys.Select( k => k.Pattern ).ShouldBe( ["Parties:[*]:Address", "Defaults:Address"] );
     }
 
@@ -284,11 +284,11 @@ public class CentralDeploymentTests
                                           "C:/Trolley.Host",
                                           ImmutableConfigurationSection.CreateFromJson( "Apps", "Trolley", """{ "FullName": "Sample/$Trolley-{Index}", "InstanceCount": 2 }""" ),
                                           engine.FirstBinPath );
-        AppBuilderConfiguration.CollectPerDeploymentKeys( TestHelper.Monitor, fleet, [], [], out var keys ).ShouldBeTrue();
+        AppContextConfiguration.CollectPerDeploymentKeys( TestHelper.Monitor, fleet, [], [], out var keys ).ShouldBeTrue();
         keys.Select( k => k.Pattern ).ShouldBe( ["InstanceCount", "Instances", "MaxInstanceCount"] );
 
         var single = new AppConfiguration( "Front", "C:/Front.App", "C:/Front.Host", ImmutableConfigurationSection.CreateFromJson( "Apps", "Front", "{}" ), engine.FirstBinPath );
-        AppBuilderConfiguration.CollectPerDeploymentKeys( TestHelper.Monitor, single, [], [], out keys ).ShouldBeTrue();
+        AppContextConfiguration.CollectPerDeploymentKeys( TestHelper.Monitor, single, [], [], out keys ).ShouldBeTrue();
         keys.ShouldBeEmpty();
     }
 
@@ -302,13 +302,13 @@ public class CentralDeploymentTests
                          .ShouldBe( """{"a":"z","c":{"d":"e","h":[{"i":1}]},"arr":[3]}""" );
     }
 
-    const string _twoBuilders = """
+    const string _twoAppContexts = """
         {
           "Domain": "Sample/Auth3",
           "Deployment": { "Publish": { "SelfContained": false, "PublishSingleFile": true, "InvariantGlobalization": null } },
-          "Builders": {
-            "Front/Front.Builder": { "App": { "AppProject": "../Other/Front.App", "HostProject": "../Front.Host" } },
-            "Auth3/Auth3.Builder": { "App": {} }
+          "AppContexts": {
+            "Front": { "RootPath": "Front", "App": { "AppProject": "Other/Front.App", "HostProject": "Front.Host" } },
+            "Auth3": { "RootPath": "Auth3", "App": {} }
           }
         }
         """;
@@ -316,60 +316,60 @@ public class CentralDeploymentTests
     [Test]
     public void the_settings_of_the_deployments_and_their_asset_names()
     {
-        var central = Create( _twoBuilders,
+        var central = Create( _twoAppContexts,
                               ("#Production", """
                                     {
                                       "Deployment": {
-                                        "Builders": [ "Front/Front.Builder" ],
+                                        "AppContexts": [ "Front" ],
                                         "SingleZipAsset": true,
                                         "Publish": { "RuntimeIdentifier": "linux-x64", "PublishSingleFile": null },
-                                        "Apps": { "front": { "Publish": { "SelfContained": true, "TieredPGO": 1, "RuntimeIdentifier": "" } } }
+                                        "Apps": { "$front": { "Publish": { "SelfContained": true, "TieredPGO": 1, "RuntimeIdentifier": "" } } }
                                       }
                                     }
                                     """),
                               ("Paris/Shop/#Staging", "{}") );
         var deployments = Load( central );
         var production = deployments.Single( d => d.Name == "#Production" );
-        production.Settings.Builders.ShouldBe( ["Front/Front.Builder"] );
+        production.Settings.AppContexts.ShouldBe( ["Front"] );
         // The central defaults, the overlay (null removes an inherited property), then the App ("" resets one).
         production.Settings.Publish.OrderBy( kv => kv.Key ).Select( kv => $"{kv.Key}={kv.Value}" )
                   .ShouldBe( ["RuntimeIdentifier=linux-x64", "SelfContained=false"] );
-        production.Settings.GetPublishProperties( "Front" ).Select( p => $"{p.Name}={p.Value}" )
+        production.Settings.GetPublishProperties( "$Front" ).Select( p => $"{p.Name}={p.Value}" )
                   .ShouldBe( ["RuntimeIdentifier=", "SelfContained=true", "TieredPGO=1"] );
-        production.Settings.GetPublishProperties( "Auth3" ).Select( p => $"{p.Name}={p.Value}" )
+        production.Settings.GetPublishProperties( "$Auth3" ).Select( p => $"{p.Name}={p.Value}" )
                   .ShouldBe( ["RuntimeIdentifier=linux-x64", "SelfContained=false"] );
-        production.DeployedBuilders.Select( b => b.Path ).ShouldBe( ["Front/Front.Builder"] );
+        production.DeployedAppContexts.Select( c => c.Name ).ShouldBe( ["Front"] );
         production.AssetName.ShouldBe( "Production" );
-        production.GetAssetFolder( "Front" ).ShouldBe( "Production/Front" );
+        production.GetAssetFolder( central.AllApps.First() ).ShouldBe( "Production/Sample.Auth3.Front", "Named after the projects of the App." );
         production.Environment.ShouldBe( "#Production" );
 
         var staging = deployments.Single( d => d.Name == "Paris/Shop/#Staging" );
-        staging.Settings.Builders.ShouldBeNull();
-        staging.Settings.GetPublishProperties( "Front" ).Select( p => $"{p.Name}={p.Value}" )
+        staging.Settings.AppContexts.ShouldBeNull();
+        staging.Settings.GetPublishProperties( "$Front" ).Select( p => $"{p.Name}={p.Value}" )
                .ShouldBe( ["PublishSingleFile=true", "SelfContained=false"] );
-        staging.DeployedBuilders.Select( b => b.Path ).ShouldBe( ["Front/Front.Builder", "Auth3/Auth3.Builder"] );
+        staging.DeployedAppContexts.Select( c => c.Name ).ShouldBe( ["Front", "Auth3"] );
         staging.AssetName.ShouldBe( "Paris.Shop.Staging" );
-        staging.GetAssetFolder( "Front" ).ShouldBe( "Paris.Shop.Staging-Front" );
+        staging.GetAssetFolder( central.AllApps.First() ).ShouldBe( "Paris.Shop.Staging-Sample.Auth3.Front" );
         staging.Environment.ShouldBe( "#Staging" );
     }
 
-    [TestCase( """{ "Deployment": { "Builders": [ "Nope/Nope.Builder" ] } }""", "Invalid builder '\"Nope/Nope.Builder\"'" )]
+    [TestCase( """{ "Deployment": { "AppContexts": [ "Nope" ] } }""", "Invalid AppContext '\"Nope\"'" )]
     [TestCase( """{ "Deployment": { "Publish": { "Bad Name": 1 } } }""", "Invalid MSBuild property name 'Bad Name'" )]
     [TestCase( """{ "Deployment": { "SingleZipAsset": "yes" } }""", "Invalid \"Deployment:SingleZipAsset\"" )]
     [TestCase( """{ "Deployment": { "Publish": { "X": [ 1 ] } } }""", "Invalid value of 'X'" )]
-    [TestCase( """{ "Deployment": { "Apps": { "Nope": { "Publish": {} } } } }""", "Unknown App 'Nope'" )]
-    [TestCase( """{ "Deployment": { "Apps": { "Front": { "Other": {} } } } }""", "an object with \"Publish\" is expected" )]
+    [TestCase( """{ "Deployment": { "Apps": { "$Nope": { "Publish": {} } } } }""", "Unknown App '$Nope'" )]
+    [TestCase( """{ "Deployment": { "Apps": { "$Front": { "Other": {} } } } }""", "an object with \"Publish\" is expected" )]
     [TestCase( """{ "Deployment": { "Other": 1 } }""", "Unknown key \"Deployment:Other\"" )]
     [TestCase( """{ "Deployment": [] }""", "an object is expected" )]
     public void invalid_settings( string overlay, string message )
     {
-        ShouldFail( Create( _twoBuilders, ("#Production", overlay) ), message );
+        ShouldFail( Create( _twoAppContexts, ("#Production", overlay) ), message );
     }
 
     [Test]
     public void the_manifest_of_a_fleet_lists_its_instances()
     {
-        var production = Load( Create( _twoBuilders, ("#Production", "{}") ) ).Single();
+        var production = Load( Create( _twoAppContexts, ("#Production", "{}") ) ).Single();
         NormalizedPath root = Path.Combine( Path.GetTempPath(), "CK.AppBuilder.Tests", Guid.NewGuid().ToString( "N" ) );
         Directory.CreateDirectory( root );
         File.WriteAllText( root.AppendPart( "Sample.slnx" ), "<Solution />" );
@@ -391,8 +391,8 @@ public class CentralDeploymentTests
             """ );
         Directory.CreateDirectory( root.AppendPart( "Backs.App" ) );
         Directory.CreateDirectory( root.AppendPart( "Backs.Host" ) );
-        var app = AppBuilderConfiguration.Load( TestHelper.Monitor, builder, "bin/Debug/net10.0", null, out _ ).ShouldNotBeNull();
-        var keys = new Dictionary<string, IReadOnlyList<(string, string)>> { { "Backs", [("Local:Port", "test")] } };
+        var app = AppContextConfiguration.Load( TestHelper.Monitor, builder, "bin/Debug/net10.0", null, out _ ).ShouldNotBeNull();
+        var keys = new Dictionary<string, IReadOnlyList<(string, string)>> { { "$Backs", [("Local:Port", "test")] } };
         app.WriteDeploymentManifests( TestHelper.Monitor, production, keys ).ShouldBeTrue();
 
         var m = System.Text.Json.Nodes.JsonNode.Parse( File.ReadAllText( root.Combine( "Backs.Host/$StObjGen/Deployment.manifest" ) ) )!;
@@ -432,23 +432,23 @@ public class CentralDeploymentTests
     [Test]
     public void the_builder_of_a_deployment_is_projected_on_the_original_App()
     {
-        var central = Create( _twoBuilders, ("#Production", """{ "Builders": { "Front/Front.Builder": { "App": { "Demo": 1 } } } }""") );
+        var central = Create( _twoAppContexts, ("#Production", """{ "AppContexts": { "Front": { "App": { "Demo": 1 } } } }""") );
         var production = Load( central ).Single();
         var folder = central.RootFolder.Combine( "Deployment/.build/Production/Front.Builder" );
         Directory.CreateDirectory( folder );
-        production.WriteBuilderProjection( TestHelper.Monitor, central, "Front/Front.Builder", folder, [new IdentityContributor()] ).ShouldBeTrue();
+        production.WriteBuilderProjection( TestHelper.Monitor, central, "Front", folder, [new IdentityContributor()] ).ShouldBeTrue();
         var text = File.ReadAllText( folder.AppendPart( "ckonf.json" ) );
         text.ShouldStartWith( "// Generated from Deployment/#Production/ckonf.merged.json (the deployment '#Production'): do not edit." );
         var projected = System.Text.Json.Nodes.JsonNode.Parse( text, documentOptions: new System.Text.Json.JsonDocumentOptions { CommentHandling = System.Text.Json.JsonCommentHandling.Skip } )!;
         projected["App"]!["AppProject"]!.GetValue<string>().ShouldBe( "../../../../Front/Other/Front.App" );
-        projected["App"]!["HostProject"].ShouldBeNull();
+        projected["App"]!["HostProject"]!.GetValue<string>().ShouldBe( "../Front.Host", "The copy of the original host, next to the generated Builder." );
         projected["App"]!["Demo"]!.GetValue<int>().ShouldBe( 1 );
 
-        production.WriteBuilderFile( folder, "Front/Front.Builder" );
-        CentralDeployment.TryReadBuilderFile( TestHelper.Monitor, folder, out var name, out var builder ).ShouldBeTrue();
+        production.WriteBuilderFile( folder, "Front" );
+        CentralDeployment.TryReadBuilderFile( TestHelper.Monitor, folder, out var name, out var appContext ).ShouldBeTrue();
         name.ShouldBe( "#Production" );
-        builder.ShouldBe( "Front/Front.Builder" );
+        appContext.ShouldBe( "Front" );
 
-        production.WriteBuilderProjection( TestHelper.Monitor, central, "Nope/Nope.Builder", folder, [new IdentityContributor()] ).ShouldBeFalse();
+        production.WriteBuilderProjection( TestHelper.Monitor, central, "Nope", folder, [new IdentityContributor()] ).ShouldBeFalse();
     }
 }

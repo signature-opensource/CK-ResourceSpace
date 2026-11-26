@@ -2,14 +2,15 @@ using CK.Core;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace CK.Setup;
 
 /// <summary>
-/// What the "ckonf.json" files share: the reading (comments allowed, case insensitive keys) and the App or Apps of a
-/// builder ("App": { ... } XOR "Apps": [ { "Name": ... }, ... ]).
+/// What the "ckonf.json" files share: the reading (comments allowed, case insensitive keys), the names, and the App or
+/// Apps of an AppContext ("App": { ... } XOR "Apps": [ { "Name": "$Party" }, ... ]).
 /// </summary>
 static class CkonfReader
 {
@@ -68,13 +69,46 @@ static class CkonfReader
     }
 
     /// <summary>
-    /// Gets the default name of the App of a builder: the name of its folder without ".Builder".
+    /// Gets the name of the AppContext of a Builder: the name of its folder without ".Builder".
     /// </summary>
-    public static string DefaultAppName( NormalizedPath builderFolder )
+    public static string AppContextNameOf( NormalizedPath builderFolder )
     {
         var n = builderFolder.LastPart;
         return n.EndsWith( ".Builder", StringComparison.OrdinalIgnoreCase ) ? n[..^8] : n;
     }
+
+    /// <summary>
+    /// Gets the default name of the single App of an AppContext: its party, <c>"$&lt;AppContext name&gt;"</c>.
+    /// </summary>
+    public static string DefaultAppName( string appContextName ) => '$' + appContextName;
+
+    /// <summary>
+    /// Gets whether a name is a valid AppContext name: letters, digits, '_', '-' and '.', no '$' (it is not a party).
+    /// </summary>
+    public static bool IsValidAppContextName( string name )
+        => name.Length > 0 && name[0] != '.' && name[^1] != '.' && !name.Contains( ".." ) && name.All( c => IsNameChar( c ) || c == '.' );
+
+    /// <summary>
+    /// Gets whether a name is a valid App name: its party name (<c>"$Jobs"</c>), possibly after the segments of its domain
+    /// relative to the domain of the solution (<c>"Customers.$Acme"</c>). The segments are letters, digits, '_' and '-'.
+    /// </summary>
+    public static bool IsValidAppName( string name )
+    {
+        var parts = name.Split( '.' );
+        var party = parts[^1];
+        return party.Length > 1
+               && party[0] == '$'
+               && party.Skip( 1 ).All( IsNameChar )
+               && parts[..^1].All( p => p.Length > 0 && p.All( IsNameChar ) );
+    }
+
+    /// <summary>
+    /// Gets the name of the projects of an App without the domain of the solution: its name without the '$'
+    /// (<c>"Customers.$Acme"</c> -> <c>"Customers.Acme"</c>).
+    /// </summary>
+    public static string BareProjectName( string appName ) => appName.Replace( "$", "" );
+
+    static bool IsNameChar( char c ) => char.IsAsciiLetterOrDigit( c ) || c == '_' || c == '-';
 
     /// <summary>
     /// Reads the App ("App": { ... }, its "Name" defaults to <paramref name="defaultName"/>) or the Apps ("Apps": [ { "Name" ... } ])
@@ -155,9 +189,9 @@ static class CkonfReader
                 if( defaultName == null ) monitor.Error( $"\"{s.Path}\" in '{file}' must have a \"Name\"." );
                 return defaultName;
             }
-            if( n.GetValueKind() != JsonValueKind.String || string.IsNullOrWhiteSpace( n.GetValue<string>() ) )
+            if( n.GetValueKind() != JsonValueKind.String || !IsValidAppName( n.GetValue<string>().Trim() ) )
             {
-                monitor.Error( $"Invalid \"{s.Path}:Name\" in '{file}': a non empty string is expected." );
+                monitor.Error( $"Invalid \"{s.Path}:Name\" in '{file}': the name of an App is its party name (\"$Jobs\"), possibly after the segments of its domain relative to the domain of the solution (\"Customers.$Acme\")." );
                 return null;
             }
             return n.GetValue<string>().Trim();

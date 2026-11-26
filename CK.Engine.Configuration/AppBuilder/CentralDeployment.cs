@@ -58,8 +58,8 @@ public sealed class CentralDeployment
     public const string SettingsKey = "Deployment";
 
     /// <summary>
-    /// The file that makes a builder the builder of a deployment: <c>{ "Deployment": "#Production", "Builder": "Front/Auth3.Front.Builder" }</c>,
-    /// written in the generated builder of a deployment (see <see cref="WriteBuilderProjection"/>).
+    /// The file that makes a Builder the Builder of a deployment: <c>{ "Deployment": "#Production", "AppContext": "Front" }</c>,
+    /// written in the generated Builder of a deployment (see <see cref="WriteBuilderProjection"/>).
     /// </summary>
     public const string BuilderFileName = "ckonf.deployment.json";
 
@@ -109,19 +109,19 @@ public sealed class CentralDeployment
 
     /// <summary>
     /// Gets the folder of the published host of an App in the assets (CKli zips each folder of the assets): by default,
-    /// one asset per App, "{AssetName}-{App}" ("Production-Auth3.Front"); with <see cref="CentralDeploymentSettings.SingleZipAsset"/>,
-    /// one asset for the deployment, "{AssetName}/{App}" ("Production/Auth3.Front").
+    /// one asset per App, "{AssetName}-{ProjectName}" ("Production-Auth3.Front"); with <see cref="CentralDeploymentSettings.SingleZipAsset"/>,
+    /// one asset for the deployment, "{AssetName}/{ProjectName}" ("Production/Auth3.Front").
     /// </summary>
-    /// <param name="appName">The App name.</param>
+    /// <param name="app">The App.</param>
     /// <returns>The relative path of the folder.</returns>
-    public string GetAssetFolder( string appName ) => Settings.SingleZipAsset ? $"{AssetName}/{appName}" : $"{AssetName}-{appName}";
+    public string GetAssetFolder( CentralApp app ) => Settings.SingleZipAsset ? $"{AssetName}/{app.ProjectName}" : $"{AssetName}-{app.ProjectName}";
 
     /// <summary>
-    /// Gets the builders that this deployment builds (<see cref="CentralDeploymentSettings.Builders"/>, all by default), in
-    /// the order of its configuration.
+    /// Gets the AppContexts that this deployment builds (<see cref="CentralDeploymentSettings.AppContexts"/>, all by
+    /// default), in the order of its configuration.
     /// </summary>
-    public IEnumerable<CentralBuilder> DeployedBuilders
-        => Configuration.Builders.Where( b => Settings.Builders == null || Settings.Builders.Contains( b.Path, StringComparer.OrdinalIgnoreCase ) );
+    public IEnumerable<CentralAppContext> DeployedAppContexts
+        => Configuration.AppContexts.Where( c => Settings.AppContexts == null || Settings.AppContexts.Contains( c.Name, StringComparer.OrdinalIgnoreCase ) );
 
     /// <summary>
     /// Gets the name of the deployment: its path in the "Deployment" folder ("#Production", "Paris/Shop/#Staging").
@@ -378,32 +378,33 @@ public sealed class CentralDeployment
     }
 
     /// <summary>
-    /// Writes the "ckonf.json" of the builder of this deployment generated for one of the builders of the solution: the
-    /// projection of the builder in the merged configuration, its Apps on their original ".App" project ("AppProject":
-    /// the generated builder references it), their ".Host" project the one next to the generated builder (a copy).
+    /// Writes the "ckonf.json" of the Builder of this deployment generated for one of the AppContexts of the solution: the
+    /// projection of the AppContext in the merged configuration, its Apps on their original ".App" project ("AppProject":
+    /// the generated Builder references it), their ".Host" project the copy next to the generated Builder (named after the
+    /// original one).
     /// </summary>
     /// <param name="monitor">The monitor to use.</param>
     /// <param name="central">The central configuration (where the original projects are).</param>
-    /// <param name="builderPath">The path of the builder in the "Builders" ("Front/Auth3.Front.Builder").</param>
-    /// <param name="folder">The folder of the generated builder.</param>
+    /// <param name="appContextName">The name of the AppContext.</param>
+    /// <param name="folder">The folder of the generated Builder.</param>
     /// <param name="contributors">The contributors, in their order.</param>
     /// <returns>True on success, false on error.</returns>
     public bool WriteBuilderProjection( IActivityMonitor monitor,
                                         CentralConfiguration central,
-                                        string builderPath,
+                                        string appContextName,
                                         NormalizedPath folder,
                                         IEnumerable<IAppBuilderContributor> contributors )
     {
-        var builder = Configuration.Builders.FirstOrDefault( b => b.Path.Equals( builderPath, StringComparison.OrdinalIgnoreCase ) );
-        var original = central.Builders.FirstOrDefault( b => b.Path.Equals( builderPath, StringComparison.OrdinalIgnoreCase ) );
-        if( builder == null || original == null )
+        var appContext = Configuration.FindAppContext( appContextName );
+        var original = central.FindAppContext( appContextName );
+        if( appContext == null || original == null )
         {
-            monitor.Error( $"The builder '{builderPath}' is not a builder of the deployment '{Name}'." );
+            monitor.Error( $"The AppContext '{appContextName}' is not an AppContext of the deployment '{Name}'." );
             return false;
         }
         bool success = true;
         var r = Configuration.WriteProjection( monitor,
-                                               builder,
+                                               appContext,
                                                contributors,
                                                folder,
                                                $"{FolderName}/{Name}/{MergedFileName} (the deployment '{Name}')",
@@ -412,60 +413,61 @@ public sealed class CentralDeployment
                                                    var o = original.Apps.FirstOrDefault( a => a.Name.Equals( app.Name, StringComparison.OrdinalIgnoreCase ) );
                                                    if( o == null )
                                                    {
-                                                       monitor.Error( $"The {app} of the deployment '{Name}' is not an App of the builder '{builderPath}' of the solution." );
+                                                       monitor.Error( $"The {app} of the deployment '{Name}' is not an App of the AppContext '{appContextName}' of the solution." );
                                                        success = false;
                                                        return;
                                                    }
                                                    node.Remove( "AppProject" );
                                                    node.Remove( "HostProject" );
                                                    node["AppProject"] = Path.GetRelativePath( folder, o.AppProjectFolder ).Replace( '\\', '/' );
+                                                   node["HostProject"] = $"../{o.HostProjectFolder.LastPart}";
                                                } );
         return r && success;
     }
 
     /// <summary>
-    /// Reads the <see cref="BuilderFileName"/> of a builder, if it exists.
+    /// Reads the <see cref="BuilderFileName"/> of a Builder, if it exists.
     /// </summary>
     /// <param name="monitor">The monitor to use.</param>
-    /// <param name="builderFolder">The folder of the builder.</param>
+    /// <param name="builderFolder">The folder of the Builder.</param>
     /// <param name="deploymentName">The name of the deployment, null when the file doesn't exist.</param>
-    /// <param name="builderPath">The path of the builder of the solution that this builder builds for the deployment.</param>
+    /// <param name="appContextName">The name of the AppContext of the solution that this Builder builds for the deployment.</param>
     /// <returns>True on success (with or without the file), false on error.</returns>
-    public static bool TryReadBuilderFile( IActivityMonitor monitor, NormalizedPath builderFolder, out string? deploymentName, out string? builderPath )
+    public static bool TryReadBuilderFile( IActivityMonitor monitor, NormalizedPath builderFolder, out string? deploymentName, out string? appContextName )
     {
         deploymentName = null;
-        builderPath = null;
+        appContextName = null;
         var file = builderFolder.AppendPart( BuilderFileName );
         if( !File.Exists( file ) ) return true;
         try
         {
             var o = JsonNode.Parse( File.ReadAllText( file ), documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip } ) as JsonObject;
             deploymentName = (o?["Deployment"] as JsonValue)?.GetValue<string>();
-            builderPath = (o?["Builder"] as JsonValue)?.GetValue<string>();
+            appContextName = (o?["AppContext"] as JsonValue)?.GetValue<string>();
         }
         catch( Exception ex )
         {
             monitor.Error( $"While reading '{file}'.", ex );
             return false;
         }
-        if( string.IsNullOrWhiteSpace( deploymentName ) || string.IsNullOrWhiteSpace( builderPath ) )
+        if( string.IsNullOrWhiteSpace( deploymentName ) || string.IsNullOrWhiteSpace( appContextName ) )
         {
-            monitor.Error( $"Invalid '{file}': {{ \"Deployment\": \"#Production\", \"Builder\": \"Path/X.Builder\" }} is expected." );
+            monitor.Error( $"Invalid '{file}': {{ \"Deployment\": \"#Production\", \"AppContext\": \"Name\" }} is expected." );
             return false;
         }
         return true;
     }
 
     /// <summary>
-    /// Writes the <see cref="BuilderFileName"/> in the folder of a builder generated for this deployment.
+    /// Writes the <see cref="BuilderFileName"/> in the folder of a Builder generated for this deployment.
     /// </summary>
-    /// <param name="builderFolder">The folder of the generated builder.</param>
-    /// <param name="builderPath">The path of the builder of the solution that it builds for this deployment.</param>
-    public void WriteBuilderFile( NormalizedPath builderFolder, string builderPath )
+    /// <param name="builderFolder">The folder of the generated Builder.</param>
+    /// <param name="appContextName">The name of the AppContext of the solution that it builds for this deployment.</param>
+    public void WriteBuilderFile( NormalizedPath builderFolder, string appContextName )
     {
-        var o = new JsonObject { ["Deployment"] = Name, ["Builder"] = builderPath };
+        var o = new JsonObject { ["Deployment"] = Name, ["AppContext"] = appContextName };
         File.WriteAllText( builderFolder.AppendPart( BuilderFileName ),
-                           $"// Written by CK.AppDeployment: this builder builds '{builderPath}' for the deployment '{Name}'.{System.Environment.NewLine}"
+                           $"// Written by CK.AppDeployment: this Builder builds the AppContext '{appContextName}' for the deployment '{Name}'.{System.Environment.NewLine}"
                            + o.ToJsonString( _writeOptions ) + System.Environment.NewLine );
     }
 
@@ -535,19 +537,19 @@ public sealed class CentralDeployment
 
     /// <summary>
     /// Checks the values per deployment: the <see cref="Markers"/>, the central keys declared by the contributors
-    /// (<see cref="CentralConfiguration.PerDeploymentKeys"/>) and the App keys of a builder (declared by the code, relative
+    /// (<see cref="CentralConfiguration.PerDeploymentKeys"/>) and the App keys of an AppContext (declared by the code, relative
     /// to an App: <see cref="AppConfiguration.AddPerDeploymentKey"/>, <see cref="ConfigurationPerDeploymentAttribute"/>).
     /// A value that exists in the <see cref="Merged"/> configuration and that this deployment doesn't write itself is an
     /// error.
     /// </summary>
     /// <param name="monitor">The monitor to use.</param>
     /// <param name="central">The central configuration.</param>
-    /// <param name="builderFolder">The folder of the builder whose App keys are given.</param>
-    /// <param name="appKeys">The keys per deployment of the Apps of this builder, by App name: the patterns relative to the App and their source.</param>
+    /// <param name="appContextName">The name of the AppContext whose App keys are given.</param>
+    /// <param name="appKeys">The keys per deployment of the Apps of this AppContext, by App name: the patterns relative to the App and their source.</param>
     /// <returns>True on success, false on error (errors are logged).</returns>
     public bool CheckPerDeployment( IActivityMonitor monitor,
                                     CentralConfiguration central,
-                                    NormalizedPath builderFolder,
+                                    string appContextName,
                                     IReadOnlyDictionary<string, IReadOnlyList<(string Pattern, string Source)>> appKeys )
     {
         var patterns = new List<PerDeploymentPattern>();
@@ -559,12 +561,11 @@ public sealed class CentralDeployment
         {
             patterns.Add( new PerDeploymentPattern( "", key, source ) );
         }
-        // The builder in the deployment (the root of its configuration is its folder: the builders are found by path).
-        var builderPath = central.FindBuilder( builderFolder )?.Path;
-        var builder = Configuration.Builders.FirstOrDefault( b => b.Path.Equals( builderPath, StringComparison.OrdinalIgnoreCase ) );
-        if( builder != null )
+        // The AppContext in the deployment.
+        var appContext = Configuration.FindAppContext( appContextName );
+        if( appContext != null )
         {
-            foreach( var app in builder.Apps )
+            foreach( var app in appContext.Apps )
             {
                 if( !appKeys.TryGetValue( app.Name, out var keys ) ) continue;
                 var appPath = RelativePath( app.Configuration.Path );

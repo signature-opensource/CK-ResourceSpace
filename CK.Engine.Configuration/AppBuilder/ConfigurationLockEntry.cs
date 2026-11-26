@@ -118,7 +118,7 @@ public sealed class ConfigurationLockEntry
 
 /// <summary>
 /// A restriction declared by a package (<see cref="ConfigurationLockAttribute"/> on a configurable type of an App's set):
-/// the builder gives them to <see cref="AppBuilderConfiguration.ApplyLocks"/>.
+/// the builder gives them to <see cref="AppContextConfiguration.ApplyLocks"/>.
 /// </summary>
 /// <param name="TypeName">The name of the type that declares it (for the errors).</param>
 /// <param name="Sections">
