@@ -323,7 +323,8 @@ public class CentralDeploymentTests
                                         "AppContexts": [ "Front" ],
                                         "SingleZipAsset": true,
                                         "Publish": { "RuntimeIdentifier": "linux-x64", "PublishSingleFile": null },
-                                        "Apps": { "$front": { "Publish": { "SelfContained": true, "TieredPGO": 1, "RuntimeIdentifier": "" } } }
+                                        "Apps": { "$front": { "Publish": { "SelfContained": true, "TieredPGO": 1, "RuntimeIdentifier": "" },
+                                                              "Packages": [ "Some.Extension", "Other_Extension", "some.extension" ] } }
                                       }
                                     }
                                     """),
@@ -338,6 +339,9 @@ public class CentralDeploymentTests
                   .ShouldBe( ["RuntimeIdentifier=", "SelfContained=true", "TieredPGO=1"] );
         production.Settings.GetPublishProperties( "$Auth3" ).Select( p => $"{p.Name}={p.Value}" )
                   .ShouldBe( ["RuntimeIdentifier=linux-x64", "SelfContained=false"] );
+        // The packages that the deployment adds to an App (once each).
+        production.Settings.GetPackages( "$Front" ).ShouldBe( ["Some.Extension", "Other_Extension"] );
+        production.Settings.GetPackages( "$Auth3" ).ShouldBeEmpty();
         production.DeployedAppContexts.Select( c => c.Name ).ShouldBe( ["Front"] );
         production.AssetName.ShouldBe( "Production" );
         production.GetAssetFolder( central.AllApps.First() ).ShouldBe( "Production/Sample.Auth3.Front", "Named after the projects of the App." );
@@ -345,6 +349,7 @@ public class CentralDeploymentTests
 
         var staging = deployments.Single( d => d.Name == "Paris/Shop/#Staging" );
         staging.Settings.AppContexts.ShouldBeNull();
+        staging.Settings.GetPackages( "$Front" ).ShouldBeEmpty();
         staging.Settings.GetPublishProperties( "$Front" ).Select( p => $"{p.Name}={p.Value}" )
                .ShouldBe( ["PublishSingleFile=true", "SelfContained=false"] );
         staging.DeployedAppContexts.Select( c => c.Name ).ShouldBe( ["Front", "Auth3"] );
@@ -358,7 +363,10 @@ public class CentralDeploymentTests
     [TestCase( """{ "Deployment": { "SingleZipAsset": "yes" } }""", "Invalid \"Deployment:SingleZipAsset\"" )]
     [TestCase( """{ "Deployment": { "Publish": { "X": [ 1 ] } } }""", "Invalid value of 'X'" )]
     [TestCase( """{ "Deployment": { "Apps": { "$Nope": { "Publish": {} } } } }""", "Unknown App '$Nope'" )]
-    [TestCase( """{ "Deployment": { "Apps": { "$Front": { "Other": {} } } } }""", "an object with \"Publish\" is expected" )]
+    [TestCase( """{ "Deployment": { "Apps": { "$Front": { "Other": {} } } } }""", "an object with \"Publish\" and \"Packages\" is expected" )]
+    [TestCase( """{ "Deployment": { "Apps": { "$Front": { "Packages": "Some.Extension" } } } }""", "an array of package identifiers is expected" )]
+    [TestCase( """{ "Deployment": { "Apps": { "$Front": { "Packages": [ "Some.Extension@1.0.0" ] } } } }""", "a package identifier is expected, without version" )]
+    [TestCase( """{ "Deployment": { "Apps": { "$Front": { "Packages": [ 1 ] } } } }""", "Invalid package '1'" )]
     [TestCase( """{ "Deployment": { "Other": 1 } }""", "Unknown key \"Deployment:Other\"" )]
     [TestCase( """{ "Deployment": [] }""", "an object is expected" )]
     public void invalid_settings( string overlay, string message )

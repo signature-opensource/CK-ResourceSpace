@@ -167,6 +167,10 @@ Deployment/
   `{ "RuntimeIdentifier": "linux-x64", "SelfContained": true, "PublishSingleFile": true }`) and `"Apps"` (the ones of an
   App by its name, over them: `"Apps": { "$Worker": { "Publish": { "PublishSingleFile": "" } } }`, an empty value resets a
   property). They are not modeled: only their shape is checked (`CentralDeploymentSettings.GetPublishProperties`).
+  An App's entry also lists the packages that the deployment adds to it, by their identifiers:
+  `"Apps": { "$Configurator": { "Packages": [ "CK.Ng.AppHost.DesktopNgApp" ] } }` (`CentralDeploymentSettings.GetPackages`).
+  A version is refused: the version of an added package is the one of the World. What an added package does is its own
+  business (its types, its aspects, its MSBuild files): the settings know nothing about it.
 - **The build of a deployment** (CK.AppDeployment) runs, for each deployed AppContext, a Builder generated for it: its
   folder has a `ckonf.deployment.json` (`{ "Deployment": "#Production", "AppContext": "Front" }`,
   `CentralDeployment.WriteBuilderFile`), and its `ckonf.json` is the projection of the AppContext in the merged
