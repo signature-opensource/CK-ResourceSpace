@@ -78,9 +78,15 @@ static class CkonfReader
     }
 
     /// <summary>
-    /// Gets the default name of the single App of an AppContext: its party, <c>"$&lt;AppContext name&gt;"</c>.
+    /// Gets the default name of the single App of an AppContext: its name with a '$' before its last segment, the party
+    /// (<c>"Worker"</c> -> <c>"$Worker"</c>, <c>"CK.Ng.Admin.Sample"</c> -> <c>"CK.Ng.Admin.$Sample"</c>: its projects
+    /// are "CK.Ng.Admin.Sample.App" and ".Host").
     /// </summary>
-    public static string DefaultAppName( string appContextName ) => '$' + appContextName;
+    public static string DefaultAppName( string appContextName )
+    {
+        var i = appContextName.LastIndexOf( '.' );
+        return i < 0 ? '$' + appContextName : $"{appContextName[..(i + 1)]}${appContextName[(i + 1)..]}";
+    }
 
     /// <summary>
     /// Gets whether a name is a valid AppContext name: letters, digits, '_', '-' and '.', no '$' (it is not a party).

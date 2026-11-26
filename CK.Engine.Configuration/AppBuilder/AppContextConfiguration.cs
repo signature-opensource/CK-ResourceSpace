@@ -12,7 +12,7 @@ namespace CK.Setup;
 
 /// <summary>
 /// The configuration of an AppContext, read from the "ckonf.json" of its Builder (the "{Name}.Builder" project): its App
-/// ("App", the party "$&lt;AppContext name&gt;" by default) or its Apps ("Apps", an array of Apps named after their party:
+/// ("App", by default the AppContext name with a '$' before its last segment: "$Worker", "CK.Ng.Admin.$Sample") or its Apps ("Apps", an array of Apps named after their party:
 /// "$Jobs"), and its AppContext aspects (the ones that apply to the whole engine run). It is the future root of the
 /// engine: the engine still receives an <see cref="EngineConfiguration"/>, that this projects (a BinPath per App, named
 /// after its ".App" project, the root of an optional "CKSetup.xml" for the aspects that are not deduced yet).

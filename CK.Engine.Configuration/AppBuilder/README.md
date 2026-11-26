@@ -47,7 +47,9 @@ An AppContext of several Apps (they share the AppContext aspects: one database) 
 
 - **`"App"` XOR `"Apps"`:** one of them, not both. The names are unique (case insensitive).
 - **The name of an App is its party name:** `"$Back1"`, possibly after the segments of its domain relative to the domain
-  of the solution (`"Customers.$Acme"`). The single App is `"$<AppContext name>"` by default.
+  of the solution (`"Customers.$Acme"`). The single App is, by default, the AppContext name with a `$` before its last segment
+  (`"Worker"` has the App `"$Worker"`, `"CK.Ng.Admin.Sample"` the App `"CK.Ng.Admin.$Sample"`: its projects are
+  `CK.Ng.Admin.Sample.App` and `.Host`).
 - **An App is a process:** the App "$Back1" is the "../Back1.App" project (its code; its bin folder is the one of the
   Builder: `bin/{Configuration}/{TargetFramework}`; its engine BinPath is named after it: "Back1") and the
   "../Back1.Host" project (its host, the `ProjectPath` of its engine BinPath). `"AppProject"` and `"HostProject"`

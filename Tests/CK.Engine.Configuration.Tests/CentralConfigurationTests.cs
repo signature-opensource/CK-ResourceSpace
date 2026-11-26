@@ -151,6 +151,17 @@ public class CentralConfigurationTests
         central.AppContexts[0].BuilderFolder.ShouldBe( root.Combine( "Shops/Shop.Builder" ) );
     }
 
+    [TestCase( "Worker", "$Worker" )]
+    [TestCase( "CK.Ng.Admin.Sample", "CK.Ng.Admin.$Sample" )]
+    public void the_single_App_is_the_AppContext_name_with_its_party( string appContext, string app )
+    {
+        var json = $$"""{ "AppContexts": { "{{appContext}}": { "App": {} } } }""";
+        var root = CreateRepository( json );
+        var central = CentralConfiguration.Parse( TestHelper.Monitor, root.AppendPart( "ckonf.json" ), json ).ShouldNotBeNull();
+        central.AllApps.Single().Name.ShouldBe( app );
+        central.AllApps.Single().ProjectName.ShouldBe( appContext );
+    }
+
     [Test]
     public void a_root_key_that_no_contributor_claims_is_an_error()
     {
