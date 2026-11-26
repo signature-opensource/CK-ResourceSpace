@@ -94,6 +94,15 @@ public sealed class AppConfiguration
     public BinPathConfiguration BinPathConfiguration { get; }
 
     /// <summary>
+    /// Gets or sets the configurable types of this App (the types of its packages that have a configurable name: aspects,
+    /// party features, client features, options...). The builder sets them from the type group of the App before the
+    /// contributors run: a contributor finds the type of a section by its name, and its models
+    /// (<c>[Configuration&lt;TModel&gt;]</c>, <c>[CompileConfiguration&lt;TModel&gt;]</c>). Empty by default (the tests of
+    /// the contributors set what they need).
+    /// </summary>
+    public IReadOnlyCollection<Type> ConfigurableTypes { get; set; } = [];
+
+    /// <summary>
     /// Declares a compile time key: it is not written in the projection of the <see cref="Configuration"/> (the host's
     /// "appsettings.json"), unless the builder keeps them ("ProjectCompileKeys": true).
     /// </summary>
