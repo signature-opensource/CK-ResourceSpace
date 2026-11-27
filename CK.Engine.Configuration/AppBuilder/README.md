@@ -62,10 +62,15 @@ An AppContext of several Apps (they share the AppContext aspects: one database) 
   name (see [The aspects](#the-aspects) below). An aspect key that nothing reads is an error.
 - **The keys are case insensitive** (it is a configuration): a duplicate key (`Local` and `local`) is an error. The
   order of the Apps means nothing: the engine receives them sorted by name.
-- **The host's `appsettings.json` is a projection of its App:** its content without the compile time keys (the ones
-  above, and the ones the contributors declare, unless `"ProjectCompileKeys": true`), the keys that the contributors
-  project in a section moved in it (the keys of the party in `"CK-AppIdentity"`). It is generated (its first line
-  says so) and written only when it changes: edit the `ckonf.json`, not the projection.
+- **The host's `appsettings.json` is a projection of its App, its run time keys only:** its content without the
+  compile time keys (the ones above, and the ones the contributors declare: `AppConfiguration.AddCompileKey`), the keys
+  that the contributors project in a section moved in it (the keys of the party in `"CK-AppIdentity"`). It is
+  generated (its first line says so) and written only when it changes: edit the `ckonf.json`, not the projection.
+- **The host's `architecture.md` describes the App from its content,** with its compile time choices: its projects,
+  its type set, its configurable types by package, then the sections that the contributors add
+  (`AppConfiguration.AddArchitecture( title, markdown )`: the party, its features, its clients, the aspects). It is
+  generated next to the `appsettings.json` (written only when it changes, never a secret value): commit it, like the
+  projection. A deployment's generated Builder writes the one of the deployed host.
 - **A `CKSetup.xml` may complete it** with the aspects that are not deduced yet and the global options of the engine,
   but no BinPath.
 

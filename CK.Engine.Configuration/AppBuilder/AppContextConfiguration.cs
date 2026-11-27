@@ -25,7 +25,8 @@ namespace CK.Setup;
 /// <para>
 /// The "appsettings.json" of each host is a projection of its App: its content without its compile time keys, the keys
 /// that the contributors project in a section (<see cref="AppConfiguration.ProjectInSection(string, string)"/>) moved
-/// in it.
+/// in it. Its "architecture.md" describes the App from its content, with its compile time choices
+/// (<see cref="AppConfiguration.AddArchitecture(string, string)"/>).
 /// </para>
 /// </summary>
 public sealed partial class AppContextConfiguration
@@ -34,6 +35,56 @@ public sealed partial class AppContextConfiguration
     /// The configuration file name, in the "XXX.Builder" project.
     /// </summary>
     public const string FileName = "ckonf.json";
+
+    /// <summary>
+    /// The file written next to the "appsettings.json" of each host: the App described from its content, with its compile
+    /// time choices (see <see cref="AppConfiguration.AddArchitecture(string, string)"/>).
+    /// </summary>
+    public const string ArchitectureFileName = "architecture.md";
+
+    // The "architecture.md" of an App: the App itself (its projects, its type set, its configurable types by package),
+    // then the sections of the contributors, in their order.
+    string GetArchitecture( AppConfiguration a, JsonObject appNode )
+    {
+        var nl = Environment.NewLine;
+        var b = new System.Text.StringBuilder();
+        b.Append( "<!-- Generated from " ).Append( _builderFolder.LastPart ).Append( '/' ).Append( FileName ).Append( ": do not edit. -->" ).Append( nl )
+         .Append( "# The App '" ).Append( a.Name ).Append( '\'' ).Append( nl ).Append( nl )
+         .Append( "Its run time configuration is `appsettings.json`; this document describes it from its content and its compile time choices." ).Append( nl ).Append( nl );
+        b.Append( "## The projects" ).Append( nl ).Append( nl )
+         .Append( "- The App: `" ).Append( Path.GetRelativePath( a.HostProjectPath, a.AppProjectPath ).Replace( '\\', '/' ) ).Append( '`' ).Append( nl )
+         .Append( "- The Builder: `" ).Append( Path.GetRelativePath( a.HostProjectPath, _builderFolder ).Replace( '\\', '/' ) ).Append( '`' ).Append( nl ).Append( nl );
+        b.Append( "## The type set" ).Append( nl ).Append( nl );
+        bool any = false;
+        foreach( var key in new[] { "Types", "ExcludedTypes", "Assemblies" } )
+        {
+            if( appNode[key] is not JsonNode n ) continue;
+            any = true;
+            var items = n is JsonArray array ? array.Select( i => i?.ToString() ?? "" ).ToList() : [n.ToString()];
+            b.Append( "- " ).Append( key ).Append( ": " )
+             .Append( items.Count == 0 ? "*(none)*" : string.Join( ", ", items.Select( i => $"`{i}`" ) ) ).Append( nl );
+        }
+        if( !any ) b.Append( "The types of the packages of the App project (discovered from its folder)." ).Append( nl );
+        b.Append( nl );
+        if( a.ConfigurableTypes.Count > 0 )
+        {
+            b.Append( "## The configurable types by package" ).Append( nl ).Append( nl )
+             .Append( "| Package | Configurable types |" ).Append( nl ).Append( "|---|---|" ).Append( nl );
+            foreach( var g in a.ConfigurableTypes.GroupBy( t => t.Assembly.GetName().Name ).OrderBy( g => g.Key, StringComparer.Ordinal ) )
+            {
+                var names = g.Select( t => t.GetCustomAttributes( inherit: false ).OfType<IConfigurableTypeAttribute>().FirstOrDefault()?.Name ?? t.Name )
+                             .Distinct( StringComparer.OrdinalIgnoreCase )
+                             .Order( StringComparer.OrdinalIgnoreCase );
+                b.Append( "| " ).Append( g.Key ).Append( " | " ).Append( string.Join( ", ", names ) ).Append( " |" ).Append( nl );
+            }
+            b.Append( nl );
+        }
+        foreach( var (title, markdown) in a.Architecture )
+        {
+            b.Append( "## " ).Append( title ).Append( nl ).Append( nl ).Append( markdown.ReplaceLineEndings( nl ).TrimEnd() ).Append( nl ).Append( nl );
+        }
+        return b.ToString().TrimEnd() + nl;
+    }
 
     // The compile time keys of an App (not projected).
     static readonly string[] _appKeys = ["Name", "AppProject", "HostProject", "Types", "ExcludedTypes", "Assemblies",
@@ -47,21 +98,18 @@ public sealed partial class AppContextConfiguration
 
     readonly NormalizedPath _builderFolder;
     readonly IReadOnlyList<JsonObject> _appNodes;
-    readonly bool _projectCompileKeys;
     readonly IReadOnlyList<AppConfiguration> _apps;
     readonly AppAspects _aspects;
     readonly IReadOnlyList<ConfigurationLockEntry> _builderLocks;
 
     AppContextConfiguration( NormalizedPath builderFolder,
                              IReadOnlyList<JsonObject> appNodes,
-                             bool projectCompileKeys,
                              IReadOnlyList<AppConfiguration> apps,
                              AppAspects aspects,
                              IReadOnlyList<ConfigurationLockEntry> builderLocks )
     {
         _builderFolder = builderFolder;
         _appNodes = appNodes;
-        _projectCompileKeys = projectCompileKeys;
         _apps = apps;
         _aspects = aspects;
         _builderLocks = builderLocks;
@@ -105,18 +153,11 @@ public sealed partial class AppContextConfiguration
         bool success = true;
         foreach( var c in section.GetChildren() )
         {
-            if( c.Key is not ("App" or "Apps" or "Aspects" or "ProjectCompileKeys" or "$schema") )
+            if( c.Key is not ("App" or "Apps" or "Aspects" or "$schema") )
             {
-                monitor.Error( $"Unknown key '{c.Key}' in '{file}': the root has App (or Apps), Aspects and ProjectCompileKeys." );
+                monitor.Error( $"Unknown key '{c.Key}' in '{file}': the root has App (or Apps) and Aspects." );
                 success = false;
             }
-        }
-        bool projectCompileKeys = false;
-        var p = section["ProjectCompileKeys"];
-        if( p != null && !bool.TryParse( p, out projectCompileKeys ) )
-        {
-            monitor.Error( $"Invalid \"ProjectCompileKeys\": '{p}' (true or false is expected)." );
-            success = false;
         }
         var aspectsSection = section.TryGetSection( "Aspects" );
         if( section["Aspects"] != null )
@@ -199,7 +240,7 @@ public sealed partial class AppContextConfiguration
             }
         }
         if( !success ) return null;
-        return new AppContextConfiguration( builderFolder, apps.Select( a => a.Node ).ToArray(), projectCompileKeys, appConfigurations, new AppAspects( aspectsSection ), builderLocks );
+        return new AppContextConfiguration( builderFolder, apps.Select( a => a.Node ).ToArray(), appConfigurations, new AppAspects( aspectsSection ), builderLocks );
 
         static bool IsUnder( string path, string prefix ) => path.Equals( prefix, StringComparison.OrdinalIgnoreCase )
                                                               || path.StartsWith( prefix + ":", StringComparison.OrdinalIgnoreCase );
@@ -310,8 +351,9 @@ public sealed partial class AppContextConfiguration
 
     /// <summary>
     /// Writes the "appsettings.json" of each host: the content of its App without its compile time keys (the ones of
-    /// the App, and the ones the contributors declared unless "ProjectCompileKeys" is true), the keys projected in a
-    /// section moved in it. A file is written only when it changes.
+    /// the App, and the ones the contributors declared), the keys projected in a section moved in it; and its
+    /// "architecture.md": the App described from its content, with its compile time choices (see
+    /// <see cref="AppConfiguration.AddArchitecture(string, string)"/>). A file is written only when it changes.
     /// </summary>
     /// <param name="monitor">The monitor to use.</param>
     /// <returns>True on success, false on error.</returns>
@@ -323,12 +365,9 @@ public sealed partial class AppContextConfiguration
             var a = _apps[i];
             var node = (JsonObject)_appNodes[i].DeepClone();
             foreach( var k in _appKeys ) node.Remove( k );
-            if( !_projectCompileKeys )
-            {
-                foreach( var path in a.CompileKeys ) Remove( node, path.Split( ':' ) );
-                // A declaration that the removal emptied stays: it is written as true.
-                foreach( var path in a.DeclarationKeys ) KeepDeclaration( node, path.Split( ':' ) );
-            }
+            foreach( var path in a.CompileKeys ) Remove( node, path.Split( ':' ) );
+            // A declaration that the removal emptied stays: it is written as true.
+            foreach( var path in a.DeclarationKeys ) KeepDeclaration( node, path.Split( ':' ) );
             // The burnt values are in the generated code, not in the file.
             foreach( var path in a.BurntKeys ) Remove( node, path.Split( ':' ) );
             if( !MoveInSections( monitor, a, node ) || !SetValues( monitor, a, node ) )
@@ -336,23 +375,29 @@ public sealed partial class AppContextConfiguration
                 success = false;
                 continue;
             }
-            var file = a.HostProjectPath.AppendPart( "appsettings.json" );
             var text = $"// Generated from {_builderFolder.LastPart}/{FileName}: do not edit.{Environment.NewLine}"
                        + node.ToJsonString( _writeOptions )
                        + Environment.NewLine;
+            success &= Write( monitor, a.HostProjectPath.AppendPart( "appsettings.json" ), text );
+            success &= Write( monitor, a.HostProjectPath.AppendPart( ArchitectureFileName ), GetArchitecture( a, _appNodes[i] ) );
+        }
+        return success;
+
+        static bool Write( IActivityMonitor monitor, NormalizedPath file, string text )
+        {
             try
             {
-                if( File.Exists( file ) && File.ReadAllText( file ) == text ) continue;
+                if( File.Exists( file ) && File.ReadAllText( file ) == text ) return true;
                 File.WriteAllText( file, text );
                 monitor.Info( $"'{file}' written from '{FileName}'." );
+                return true;
             }
             catch( Exception ex )
             {
                 monitor.Error( $"While writing '{file}'.", ex );
-                success = false;
+                return false;
             }
         }
-        return success;
 
         // A value in an array is kept: removing it would shift the indices of the next ones.
         static void Remove( JsonObject o, string[] path )

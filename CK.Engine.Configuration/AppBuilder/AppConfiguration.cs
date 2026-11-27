@@ -9,7 +9,8 @@ namespace CK.Setup;
 /// An App of the builder: declared in "ckonf.json" by its name ("Apps:{Name}"), it is its ".App" project (its code: the
 /// <see cref="BinPathConfiguration.Path"/> of its engine BinPath) and its ".Host" project (its process: the
 /// <see cref="BinPathConfiguration.ProjectPath"/>), that receives the projection of its <see cref="Configuration"/> (its
-/// "appsettings.json"). An App hosts its root party and its tenants.
+/// "appsettings.json", its run time keys only) and its "architecture.md" (the App described from its content, with its
+/// compile time choices: see <see cref="AddArchitecture(string, string)"/>). An App hosts its root party and its tenants.
 /// </summary>
 public sealed class AppConfiguration
 {
@@ -26,6 +27,7 @@ public sealed class AppConfiguration
     readonly HashSet<string> _secretKeys;
     readonly HashSet<string> _perDeploymentKeys;
     readonly HashSet<(string Kind, string Path)> _perDeploymentPartyKeys;
+    readonly List<(string Title, string Markdown)> _architecture;
 
     /// <summary>
     /// Initializes a new App. The builder creates them from "ckonf.json"; this is public for the tests of the contributors.
@@ -60,6 +62,7 @@ public sealed class AppConfiguration
         _initSections = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
         _burntKeys = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
         _runValues = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
+        _architecture = new List<(string, string)>();
     }
 
     /// <summary>
@@ -103,8 +106,9 @@ public sealed class AppConfiguration
     public IReadOnlyCollection<Type> ConfigurableTypes { get; set; } = [];
 
     /// <summary>
-    /// Declares a compile time key: it is not written in the projection of the <see cref="Configuration"/> (the host's
-    /// "appsettings.json"), unless the builder keeps them ("ProjectCompileKeys": true).
+    /// Declares a compile time key: it is never written in the projection of the <see cref="Configuration"/> (the host's
+    /// "appsettings.json" has the run time keys only); the compile time choices are described in the host's
+    /// "architecture.md" (see <see cref="AddArchitecture(string, string)"/>).
     /// </summary>
     /// <param name="path">The path of the key, relative to <see cref="Configuration"/> (with ':' separators).</param>
     public void AddCompileKey( string path )
@@ -134,6 +138,26 @@ public sealed class AppConfiguration
     /// Gets the compile time keys declared by <see cref="AddCompileKey(string)"/>.
     /// </summary>
     public IReadOnlyCollection<string> CompileKeys => _compileKeys;
+
+    /// <summary>
+    /// Adds a section to the "architecture.md" of the host (written next to its "appsettings.json"): the App described
+    /// from its content. The builder writes the App itself (its projects, its type set, its configurable types by
+    /// package); the contributors describe what they handle (the party, its features, its clients and their compile time
+    /// choices, the aspects), in their order. Never a secret value.
+    /// </summary>
+    /// <param name="title">The title of the section (a level 2 heading).</param>
+    /// <param name="markdown">The content of the section (Markdown, its headings at level 3 or below).</param>
+    public void AddArchitecture( string title, string markdown )
+    {
+        Throw.CheckNotNullOrWhiteSpaceArgument( title );
+        Throw.CheckNotNullArgument( markdown );
+        _architecture.Add( (title, markdown) );
+    }
+
+    /// <summary>
+    /// Gets the sections added by <see cref="AddArchitecture(string, string)"/>, in their order.
+    /// </summary>
+    public IReadOnlyList<(string Title, string Markdown)> Architecture => _architecture;
 
     /// <summary>
     /// Declares that the values at a path are secrets (see <see cref="ConfigurationSecret"/>): their configuration should

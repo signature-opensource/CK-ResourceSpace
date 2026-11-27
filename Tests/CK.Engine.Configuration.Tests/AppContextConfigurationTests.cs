@@ -240,21 +240,26 @@ public class AppContextConfigurationTests
     }
 
     [Test]
-    public void ProjectCompileKeys_keeps_the_compile_keys_of_the_leaves()
+    public void the_compile_keys_are_never_projected_the_architecture_describes_the_App()
     {
         var builder = CreateSolution( """
             {
-              "ProjectCompileKeys": true,
-              "App": { "Name": "$Front", "Types": [], "Local": { "Kind": "DefaultApp" } }
+              "App": { "Name": "$Front", "Types": [], "Local": { "Kind": "DefaultApp", "Size": 3 } }
             }
             """, "Front" );
         var app = Load( builder, out _ ).ShouldNotBeNull();
         app.Apps[0].AddCompileKey( "Local:Kind" );
+        app.Apps[0].AddArchitecture( "The party", "Its kind is `DefaultApp`." );
         app.WriteProjections( TestHelper.Monitor ).ShouldBeTrue();
-        var text = File.ReadAllText( app.Apps[0].HostProjectPath.AppendPart( "appsettings.json" ) );
-        text.ShouldContain( "DefaultApp" );
-        // The keys of the App itself are never projected.
-        text.ShouldNotContain( "Types" );
+        var host = app.Apps[0].HostProjectPath;
+        var settings = File.ReadAllText( host.AppendPart( "appsettings.json" ) );
+        settings.ShouldNotContain( "DefaultApp" );
+        settings.ShouldNotContain( "Types" );
+        settings.ShouldContain( "\"Size\": 3" );
+        var architecture = File.ReadAllText( host.AppendPart( AppContextConfiguration.ArchitectureFileName ) ).ReplaceLineEndings( "\n" );
+        architecture.ShouldStartWith( "<!-- Generated from Backs.Builder/ckonf.json: do not edit. -->\n# The App '$Front'" );
+        architecture.ShouldContain( "## The type set\n\n- Types: *(none)*\n" );
+        architecture.ShouldContain( "## The party\n\nIts kind is `DefaultApp`.\n" );
     }
 
     [Test]
@@ -291,7 +296,7 @@ public class AppContextConfigurationTests
     [TestCase( """{ "App": { "Name": "Back" } }""", "the name of an App is its party name" )]
     [TestCase( """{ "App": { "Name": "$Back", "name": "Back" } }""", "Duplicate key 'App:name'" )]
     [TestCase( """{ "Other": 1, "App": { "Name": "$Back" } }""", "Unknown key 'Other'" )]
-    [TestCase( """{ "ProjectCompileKeys": "maybe", "App": { "Name": "$Back" } }""", "Invalid \"ProjectCompileKeys\"" )]
+    [TestCase( """{ "ProjectCompileKeys": true, "App": { "Name": "$Back" } }""", "Unknown key 'ProjectCompileKeys'" )]
     [TestCase( """{ "Aspects": "SqlServer", "App": { "Name": "$Back" } }""", "\"Aspects\" in" )]
     [TestCase( """{ "App": { "Name": "$Back", "Aspects": "Globalization" } }""", "\"ckonf:App:Aspects\" must be an object" )]
     public void invalid_configurations_are_errors( string ckonf, string expected )
