@@ -422,6 +422,17 @@ public class CentralDeploymentTests
         configured[1]!["PerDeployment"]!["Local:Port"]!.GetValue<string>().ShouldBe( "tcp:0.0.0.0:38002" );
         m["Instances"]!["Dynamic"]!["From"]!.GetValue<int>().ShouldBe( 3 );
         m["Instances"]!["Dynamic"]!["To"]!.GetValue<int>().ShouldBe( 4 );
+
+        // The same facts in the "architecture.md" of the host: the secrets by their names only.
+        var (title, markdown) = app.Apps[0].Architecture.ShouldHaveSingleItem();
+        title.ShouldBe( "The deployment" );
+        markdown.ShouldContain( "- Deployment: `#Production` (environment `#Production`)" );
+        markdown.ShouldContain( "`PublishSingleFile=true`" );
+        markdown.ShouldContain( "- Secrets: `Backs:{Name}:Key`, `Db`" );
+        markdown.ShouldContain( "- Optional secrets: `Enlist:{Name}`" );
+        markdown.ShouldContain( "| Local:Port | `tcp:0.0.0.0:{38000+Index}` |" );
+        markdown.ShouldContain( "- `2`: `Sample/$Backs-2/#Production`" );
+        markdown.ShouldContain( "- Dynamic: from 3 to 4" );
     }
 
     // What the AppIdentity contributor claims.

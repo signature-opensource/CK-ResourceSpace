@@ -70,7 +70,9 @@ An AppContext of several Apps (they share the AppContext aspects: one database) 
   its type set, its configurable types by package, then the sections that the contributors add
   (`AppConfiguration.AddArchitecture( title, markdown )`: the party, its features, its clients, the aspects). It is
   generated next to the `appsettings.json` (written only when it changes, never a secret value): commit it, like the
-  projection. A deployment's generated Builder writes the one of the deployed host.
+  projection. A deployment's generated Builder writes the one of the deployed host, with a "The deployment" section
+  (the facts of its manifest: the deployment, its publication, the names of its secrets, its values per deployment, its
+  instances); CK.AppDeployment publishes it with the host.
 - **A `CKSetup.xml` may complete it** with the aspects that are not deduced yet and the global options of the engine,
   but no BinPath.
 

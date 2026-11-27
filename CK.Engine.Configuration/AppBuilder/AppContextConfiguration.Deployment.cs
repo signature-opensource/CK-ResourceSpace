@@ -109,6 +109,8 @@ public sealed partial class AppContextConfiguration
                 }
                 manifest["Instances"] = o;
             }
+            // The deployment in the "architecture.md" of the host: the same facts as the manifest (never a secret value).
+            a.AddArchitecture( "The deployment", DescribeDeployment( manifest ) );
             var file = a.HostProjectPath.Combine( DeploymentManifestFileName );
             try
             {
@@ -123,6 +125,39 @@ public sealed partial class AppContextConfiguration
             }
         }
         return success;
+
+        // The "The deployment" section of the architecture of a host, from its manifest.
+        static string DescribeDeployment( JsonObject manifest )
+        {
+            var b = new System.Text.StringBuilder();
+            b.Append( "- Deployment: `" ).Append( manifest["Deployment"] ).Append( "` (environment `" ).Append( manifest["Environment"] ).Append( "`)" ).Append( '\n' );
+            if( manifest["Bases"] is JsonArray { Count: > 0 } bases ) b.Append( "- Its bases: " ).Append( List( bases ) ).Append( '\n' );
+            b.Append( "- Full name: `" ).Append( manifest["FullName"] ).Append( '`' ).Append( '\n' );
+            if( manifest["Publish"] is JsonObject { Count: > 0 } publish )
+            {
+                b.Append( "- Publication: " ).Append( string.Join( ", ", publish.Select( p => $"`{p.Key}={p.Value}`" ) ) ).Append( '\n' );
+            }
+            b.Append( "- Secrets: " ).Append( manifest["Secrets"] is JsonArray { Count: > 0 } s ? List( s ) : "*(none)*" ).Append( '\n' );
+            if( manifest["OptionalSecrets"] is JsonArray { Count: > 0 } o ) b.Append( "- Optional secrets: " ).Append( List( o ) ).Append( '\n' );
+            if( manifest["PerDeployment"] is JsonObject { Count: > 0 } values )
+            {
+                b.Append( '\n' ).Append( "The values per deployment:" ).Append( '\n' ).Append( '\n' )
+                 .Append( "| Key | Value |" ).Append( '\n' ).Append( "|---|---|" ).Append( '\n' );
+                foreach( var (k, v) in values ) b.Append( "| " ).Append( k ).Append( " | `" ).Append( (v is JsonValue jv && jv.TryGetValue<string>( out var text ) ? text : v?.ToJsonString( _manifestOptions ))?.Replace( "|", "\\|" ) ).Append( "` |" ).Append( '\n' );
+            }
+            if( manifest["Instances"] is JsonObject instances )
+            {
+                b.Append( '\n' ).Append( "The instances:" ).Append( '\n' ).Append( '\n' );
+                foreach( var i in instances["Configured"]?.AsArray() ?? [] )
+                {
+                    b.Append( "- `" ).Append( i?["Name"] ).Append( "`: `" ).Append( i?["FullName"] ).Append( '`' ).Append( '\n' );
+                }
+                if( instances["Dynamic"] is JsonObject d ) b.Append( "- Dynamic: from " ).Append( d["From"] ).Append( " to " ).Append( d["To"] ).Append( '\n' );
+            }
+            return b.ToString();
+
+            static string List( JsonArray a ) => string.Join( ", ", a.Select( n => $"`{n}`" ) );
+        }
 
         // The names of the secrets, required and optional, of a set of values.
         static void CollectSecrets( IEnumerable<KeyValuePair<string, string?>> values, SortedSet<string> required, SortedSet<string> optional )
