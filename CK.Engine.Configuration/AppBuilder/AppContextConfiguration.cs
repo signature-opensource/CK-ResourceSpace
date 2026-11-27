@@ -81,7 +81,7 @@ public sealed partial class AppContextConfiguration
         }
         foreach( var (title, markdown) in a.Architecture )
         {
-            b.Append( "## " ).Append( title ).Append( nl ).Append( nl ).Append( markdown.ReplaceLineEndings( nl ).TrimEnd() ).Append( nl ).Append( nl );
+            b.Append( "## " ).Append( title ).Append( nl ).Append( nl ).Append( markdown.ReplaceLineEndings( nl ).Trim( '\r', '\n' ).TrimEnd() ).Append( nl ).Append( nl );
         }
         return b.ToString().TrimEnd() + nl;
     }

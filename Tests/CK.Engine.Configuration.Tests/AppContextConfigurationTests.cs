@@ -249,7 +249,8 @@ public class AppContextConfigurationTests
             """, "Front" );
         var app = Load( builder, out _ ).ShouldNotBeNull();
         app.Apps[0].AddCompileKey( "Local:Kind" );
-        app.Apps[0].AddArchitecture( "The party", "Its kind is `DefaultApp`." );
+        // A section that starts with new lines (an empty first part) has no extra blank line.
+        app.Apps[0].AddArchitecture( "The party", "\n\nIts kind is `DefaultApp`." );
         app.WriteProjections( TestHelper.Monitor ).ShouldBeTrue();
         var host = app.Apps[0].HostProjectPath;
         var settings = File.ReadAllText( host.AppendPart( "appsettings.json" ) );
